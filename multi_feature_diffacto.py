@@ -127,6 +127,7 @@ def run():
         return -1
     if k == 3 :
         print('One diffacto run')
+        args['venn'] = False
     if k <= 2 :
         print('Second diffacto run is applied')
     
