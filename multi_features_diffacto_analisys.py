@@ -17,7 +17,8 @@ from pyteomics.openms import featurexml
 import venn
 from venn import venn
     
-
+from scipy.stats import pearsonr 
+from scipy.optimize import curve_fit
 def run():
     parser = argparse.ArgumentParser(
         description = 'run multiple feature detection matching and diffacto for scavager results',
@@ -209,7 +210,7 @@ def run():
                     subprocess.call([args['dino'], '--outDir='+ outDir, '--outName='+ outName, path])
                 os.rename(outDir + '/' + outName + '.features.tsv', outDir + '/' + outName)
             else :
-                print('Not ovetwriting features ' + ' dino ' + sample)
+                print('Not overwriting features ' + ' dino ' + sample)
         print('\n')
 
 ### Biosaur
@@ -273,12 +274,14 @@ def run():
                 features_list = []
                 for z in a : 
                     mz = float(z['position'][1]['position'])
-                    rtApex = float(z['position'][0]['position']) / 60
+                    # rtApex = float(z['position'][0]['position']) / 60
+                    rtStart = float(z['convexhull'][0]['pt'][0]['x'])/60
+                    rtEnd = float(z['convexhull'][0]['pt'][1]['x'])/60
                     intensityApex = float(z['intensity'])
                     charge = int(z['charge'])
                     feature_index = z['id']
-                    features_list.append([feature_index, mz, charge, rtApex, intensityApex])
-                b = pd.DataFrame(features_list, columns = ['id', 'mz', 'charge', 'rtApex', 'intensityApex'])
+                    features_list.append([feature_index, mz, charge, rtStart,rtEnd, intensityApex])
+                b = pd.DataFrame(features_list, columns = ['id', 'mz', 'charge', 'rtStart', 'rtEnd', 'intensityApex'])
                 b.to_csv(o, sep='\t', encoding='utf-8')
             else :
                 print('Not overwriting features ' + ' openMS ' + sample)
@@ -286,107 +289,103 @@ def run():
 
 
 ## Функции для сопоставления
-    
-                                
-    def find_feature_for_psm_1(features_db, mz, z, rt, accuracy_ppm=10, accuracy_minut = 0.5, openMS = False) :
-        if not openMS :
-            features = features_db.copy()
-            features.sort_values('mz', inplace = True)
-            dm = accuracy_ppm*mz/1e6
-            l = mz - dm
-            r = mz + dm
-            feature = features_db.query('`mz` >= @l and `mz` <= @r and (`charge` == @z) and (`rtStart` <= @rt) and (`rtEnd` >= @rt)')
-            
-            if not feature.empty :
-                feature_index = feature.index[0]
-                mz = feature['mz'].values[0]
-                charge = feature['charge'].values[0]
-                rtStart = feature['rtStart'].values[0]
-                rtEnd = feature['rtEnd'].values[0]
-                feature_intensityApex = feature['intensityApex'].values[0]
-                num_matches = len(feature)
-            else :
-                feature_index, mz, charge, rtStart, rtEnd, feature_intensityApex, num_matches = None, None, None, None, None, None, None
-            return (feature_index, mz, charge, rtStart, rtEnd, feature_intensityApex, num_matches)
-        else :
-            features = features_db.copy()
-            features.sort_values('mz', inplace = True)
-            
-            dm = accuracy_ppm*mz/1e6
-            l_mz = mz - dm
-            r_mz = mz + dm
-                                    
-            dt = accuracy_minut
-            l_rt = rt - dt
-            r_rt = rt + dt
-            
-            feature = features_db.query('(`mz` >= @l_mz) and (`mz` <= @r_mz) and (`charge` == @z) and (`rtApex` <= @r_rt) and (`rtApex` >= @l_rt)')
-            if not feature.empty :
-                feature_index = feature['id'].values[0]
-                mz = feature['mz'].values[0]
-                charge = feature['charge'].values[0]
-                rtApex = feature['rtApex'].values[0]
-                feature_intensityApex = feature['intensityApex'].values[0]
-                num_matches = len(feature)
-            else :
-                feature_index, mz, charge, rtApex, feature_intensityApex, num_matches = None, None, None, None, None, None
-            return (feature_index, mz, charge, rtApex, feature_intensityApex, num_matches)
-    
-    
-    def feature_for_psm_files_1(features_db, psms_db, accuracy_ppm=10, accuracy_minut = 0.5, openMS = False) :
-        not_matched = 0
-        i = 0
-        length = len(psms_db)
-        seconds = time.time()
-        local_time = time.ctime(seconds)
-        point = length // 10
-        features_for_psm = [] # 9 []
-    # pd.DataFrame(colomns = ['PSM_index', 'feature_index', 'PSM_mz', 'feature_mz', 'PSM_charge', 'feature_charge', 'feature_rtStart', 'PSM_rt_exp', 'feature_rtEnd'])
-        for index, row in psms_db.iterrows() :
+    def noisygaus(x, a, x0, sigma, b):
+        return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2)) + b
 
-            psm_index = index
-            peptide = row['peptide']
-            psm_mass = row['calc_neutral_pep_mass']
-            psm_charge = row['assumed_charge']
-            psm_rt = row['RT exp']
-            psm_mz = (psm_mass+psm_charge*1.00697)/psm_charge
-            protein = row['protein']
-            
-            if not openMS :
-                feature_index, feature_mz, feature_charge, feature_rtStart, feature_rtEnd, feature_intensityApex, num_features_matched = find_feature_for_psm_1(features_db, psm_mz, 
-                                                                                                                                        psm_charge, psm_rt, accuracy_ppm=accuracy_ppm, 
-                                                                                                                                        accuracy_minut = accuracy_minut, openMS = False)
+    def calibrate_mass(bwidth, mass_left, mass_right, true_md):
 
-                features_for_psm.append([peptide, protein, psm_index, feature_index, psm_mz, feature_mz, psm_charge, 
-                                     feature_charge, feature_rtStart, psm_rt, feature_rtEnd, feature_intensityApex, num_features_matched])
-            else :
-                feature_index, feature_mz, feature_charge, feature_rtApex, feature_intensityApex, num_features_matched = find_feature_for_psm_1(features_db, psm_mz, 
-                                                                                                                        psm_charge, psm_rt, accuracy_ppm=accuracy_ppm, 
-                                                                                                                        accuracy_minut=accuracy_minut, openMS = True)
+        bbins = np.arange(-mass_left, mass_right, bwidth)
+        H1, b1 = np.histogram(true_md, bins=bbins)
+        b1 = b1 + bwidth
+        b1 = b1[:-1]
+        popt, pcov = curve_fit(noisygaus, b1, H1, p0=[1, np.median(true_md), 1, 1])
+        mass_shift, mass_sigma = popt[1], abs(popt[2])
+        return mass_shift, mass_sigma, pcov[0][0]
         
-                features_for_psm.append([peptide, protein, psm_index, feature_index, psm_mz, feature_mz, psm_charge, 
-                                 feature_charge, psm_rt, feature_rtApex, feature_intensityApex, num_features_matched])
-            
-            if num_features_matched == None :
-                not_matched += 1
+    def total(df_features, psms, mean=0, sigma=False, mean_mz=0, mass_accuracy_ppm=10, isotopes_array=[0, ]):
+            mz_array_ms1 = df_features['mz'].values
+            ch_array_ms1 = df_features['charge'].values
+            rtStart_array_ms1 = df_features['rtStart'].values
+            rtEnd_array_ms1 = df_features['rtEnd'].values
+            feature_intensityApex = df_features['intensityApex'].values
+            from collections import defaultdict
+            results = defaultdict(list)
+            if sigma is False:
+                max_rt_err = max(rtEnd_array_ms1)/15
+                interval = max_rt_err
+            else:
+                interval = 3*sigma  
+            for i in isotopes_array: 
+                for index, row in psms.iterrows(): 
+                    psms_index = row['spectrum']  
+                    peptide = row['peptide']
+                    psm_mass = row['calc_neutral_pep_mass']
+                    psm_charge = row['assumed_charge']
+                    psm_rt = row['RT exp']
+                    psm_mz = (psm_mass+psm_charge*1.00697)/psm_charge
+                    protein = row['protein']
+                    if psms_index not in results:      
+                        a = psm_mz*(1 + mean_mz*1e-6) -  i*1.0072765/psm_charge 
+                        mass_accuracy = mass_accuracy_ppm*1e-6*a
+                        idx_l_psms1_ime = mz_array_ms1.searchsorted(a - mass_accuracy)
+                        idx_r_psms1_ime = mz_array_ms1.searchsorted(a + mass_accuracy, side='right')
+                        for idx_current_ime in range(idx_l_psms1_ime, idx_r_psms1_ime, 1):
+                            if ch_array_ms1[idx_current_ime] == psm_charge:
+                                rtS = rtStart_array_ms1[idx_current_ime]
+                                rtE = rtEnd_array_ms1[idx_current_ime]
+                                if rtS - interval < psm_rt + mean < rtE+interval:
+                                    ms1_mz = mz_array_ms1[idx_current_ime]
+                                    mz_diff_ppm = (ms1_mz - a) / a * 1e6
+                                    rt_diff = (rtE - rtS)/2+rtS - psm_rt
+                                    intensity = feature_intensityApex[idx_current_ime]
+                                    results[psms_index].append((idx_current_ime,mz_diff_ppm, rt_diff,i,intensity))         
+            return results
+    def found_mean_sigma_rt(df_features,psms):#ищем среднее и сигму для rt rt_Apex
+        rtEnd_array_ms1 = df_features['rtEnd'].values
+        results_psms_rt = total(df_features = df_features,psms = psms,mass_accuracy_ppm = 100)
+        results_psms_rt_new = dict()
+        ar_rt = []
+        for kk, value in results_psms_rt.items():
+            results_psms_rt_new[kk] = sorted(value, key=lambda x: abs(x[1]))[0]
+            ar_rt.append(results_psms_rt_new[kk][2])
+        mean, sigma, _ = calibrate_mass(max(rtEnd_array_ms1)/1000,-min(ar_rt),max(ar_rt),ar_rt)
+        return(mean,sigma)
+     
+    def found_mean_sigma_mz(df_features,psms,mean_rt=0,sigma_rt=False):
+        mean_rt, sigma_rt = found_mean_sigma_rt(df_features,psms)
+        results_psms_mz = total(df_features =df_features,psms =psms,mean = mean_rt,sigma = sigma_rt)
+        results_psms_mz_new = dict()
+        ar_masses = []
+        for kk, value in results_psms_mz.items():
+            results_psms_mz_new[kk] = sorted(value, key=lambda x: abs(x[1]))[0]
+            ar_masses.append(results_psms_mz_new[kk][1])
+        mean_mz, sigma_mz,_ = calibrate_mass(0.2,-min(ar_masses),max(ar_masses),ar_masses)
+        return mean_mz, sigma_mz
 
-            i += 1
-            if i % point == 0 :
-                seconds = time.time()
-                local_time = time.ctime(seconds)
-                print(i,  'from', length, local_time)
-        print('Number of PMS without features:', not_matched)
-        if not openMS :
-            cols = ['peptide', 'protein', 'PSM_index', 'feature_index', 'PSM_mz', 'feature_mz', 
-                    'PSM_charge', 'feature_charge', 'feature_rtStart', 'PSM_rt_exp', 'feature_rtEnd',
-                    'feature_intensityApex', 'num_features_matched']
-        else :
-            cols = ['peptide', 'protein', 'PSM_index', 'feature_index', 'PSM_mz', 'feature_mz', 
-                    'PSM_charge', 'feature_charge', 'PSM_rt_exp', 'feature_rtApex',
-                    'feature_intensityApex', 'num_features_matched']
-        features_for_psm_db = pd.DataFrame(features_for_psm, columns = cols )
+    def optimazed_search_with_isotope_error_(df_features,psms,mean_rt=False,sigma_rt=False,  mean_mz = False,sigma_mz = False,isotopes_array=[0,1,-1,2,-2]):
+        if mean_rt == False and sigma_rt == False:
+            mean_rt, sigma_rt = found_mean_sigma_rt(df_features,psms)
+        if mean_mz == False and sigma_mz == False:
+            mean_mz, sigma_mz = found_mean_sigma_mz(df_features,psms, mean_rt=mean_rt,sigma_rt=sigma_rt)     
+        results_isotope = total(df_features = df_features,psms =psms,mean = mean_rt, sigma = sigma_rt, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, isotopes_array=isotopes_array)
+        results_isotope_end = [] 
+        cnt = Counter([z[0][3] for z in results_isotope.values()])
+        for i in cnt.values():
+            results_isotope_end.append(i/len(psms))
+        end_isotope_ = list(np.add.accumulate(np.array(results_isotope_end))*100)
+        df_features_dict = {}
+        intensity_dict = {}
+        for kk,v in results_isotope.items():
+            df_features_dict[kk] = v[0][0]
+            intensity_dict[kk] = v[0][4]
+        ser1 = pd.DataFrame(df_features_dict.values(),index =range(0, len(df_features_dict),1), columns = ['df_features'])
+        ser2 = pd.DataFrame(df_features_dict.keys(),index =range(0, len(df_features_dict),1), columns = ['spectrum'])
+        ser3 = pd.DataFrame(intensity_dict.values(),index =range(0, len(intensity_dict),1), columns = ['feature_intensityApex'])
+        s = pd.concat([ser1,ser2],sort = False,axis = 1 )
+        ss = pd.concat([s,ser3],sort = False,axis = 1 )
+        features_for_psm_db = pd.merge(psms,ss,on = 'spectrum',how='outer')
         return features_for_psm_db
-
+# end_isotope_, cnt.keys(),
 
 ### Сопоставление
 
@@ -397,23 +396,16 @@ def run():
 #    suffixes = ['dino', 'bio', 'bio2', 'openMS'] - уже заданы
     print('Start matching features')
     for PSM_path, sample in zip(PSMs_full_paths, samples) :
-        PSM = pd.read_csv(PSM_path, sep = '\t')
+        PSM = pd.read_csv(PSM_path, sep = '\t')[['calc_neutral_pep_mass', 'assumed_charge', 'RT exp', 'spectrum', 'peptide','protein']]
         print('sample', sample)
         for suf in suffixes :
             if args['overwrite_matching'] == 1 or not os.path.exists(out_directory + '/feats_matched/' + sample + '_' + suf + '.tsv') :
-                feats = pd.read_csv( out_directory + '/features/' + sample + '_features_' + suf + '.tsv', sep = '\t')    
+                feats = pd.read_csv( out_directory + '/features/' + sample + '_features_' + suf + '.tsv', sep = '\t')[['mz', 'charge', 'rtStart', 'rtEnd', 'intensityApex']]
+                feats = feats.sort_values(by='mz')
                 print(suf, 'features', sample, '\n', 'START')
-                if suf == 'openMS' :
-                    temp_df = feature_for_psm_files_1( feats, PSM , accuracy_ppm = 10, openMS = True )
-                    cols = ['peptide', 'protein', 'PSM_index', 'feature_index', 'PSM_mz', 'feature_mz', 
-                            'PSM_charge', 'feature_charge', 'PSM_rt_exp', 'feature_rtApex',
-                            'feature_intensityApex', 'num_features_matched']
-                else :
-                    temp_df = feature_for_psm_files_1( feats, PSM , accuracy_ppm = 10, openMS = False )
-                    cols = ['peptide', 'protein', 'PSM_index', 'feature_index', 'PSM_mz', 'feature_mz', 
-                            'PSM_charge', 'feature_charge', 'feature_rtStart', 'PSM_rt_exp', 'feature_rtEnd',
-                            'feature_intensityApex', 'num_features_matched']
-                
+                temp_df = optimazed_search_with_isotope_error_(feats, PSM )
+                cols = ['calc_neutral_pep_mass','assumed_charge','RT exp','spectrum','peptide','protein','df_features','feature_intensityApex']
+              
                 median = temp_df['feature_intensityApex'].median()
                 temp_df['med_norm_feature_intensityApex'] = temp_df['feature_intensityApex']/median
                 cols.append('med_norm_feature_intensityApex')
