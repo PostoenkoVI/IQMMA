@@ -52,6 +52,7 @@ def run():
         formatter_class = argparse.ArgumentDefaultsHelpFormatter, fromfile_prefix_chars='@')
     
     parser.add_argument('-cfg', help='path to config .ini file')
+    parser.add_argument('-cfg_category', help='name of category to prioritize in the .ini file')
     parser.add_argument('-dif', help='path to Diffacto')
     parser.add_argument('-scav2dif', help='path to scav2diffacto')
     parser.add_argument('-s1', nargs='+', help='input files PSMs_full.tsv (and _proteins.tsv should be in the same directory) for S1 sample')
@@ -75,7 +76,7 @@ def run():
     parser.add_argument('-overwrite_first_diffacto', help='whether to overwrite existed diffacto files (flag == 1) or use them (flag == 0)')
     parser.add_argument('-mixed', help='whether to reanalyze mixed intensities (1) or not (0)')
     parser.add_argument('-venn', help='whether to plot venn diagrams (1) or not (0)')
-    parser.add_argument('-choice', help='method how to choose right intensities for peptide. 0 - default order and min Nan values, 1 - min Nan and min of summ CV, 2 - min Nan and min of max CV, 3 - default order with filling Nan values between programs (if using this variant -norm MUST be applied)')
+    parser.add_argument('-choice', help='method how to choose final intensities for peptide. 0 - default order and min Nan values, 1 - min Nan and min of summ CV, 2 - min Nan and min of max CV, 3 - default order with filling Nan values between programs (if using this variant -norm MUST be applied), 4 - min Nan and min of root of squared summ CV')
     parser.add_argument('-norm', help='normalization method for intensities. Can be 1 - median or 0 - no normalization')
     
     parser.add_argument('-outPept', help='name of output diffacto peptides file (important: .txt)', default='peptides.txt')
@@ -89,12 +90,16 @@ def run():
 
 
     if args['cfg'] :
+        if args['cfg_category'] :
+            cat = args['cfg_category']
+        else :
+            cat = 'settings_one'
         config = configparser.RawConfigParser(allow_no_value=True, empty_lines_in_values=False, )
         config.read(os.path.join(os.path.abspath(__file__), args['cfg']))
         for key in args.keys() :
             if args[key] == None :
                 try :
-                    args[key] = config['settings_one'][key]
+                    args[key] = config[cat][key]
                 except :   
                     if args[key] == None :
                         try :
@@ -289,6 +294,7 @@ def run():
 
 
 ## Функции для сопоставления
+
     def noisygaus(x, a, x0, sigma, b):
         return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2)) + b
 
@@ -301,6 +307,7 @@ def run():
         popt, pcov = curve_fit(noisygaus, b1, H1, p0=[1, np.median(true_md), 1, 1])
         mass_shift, mass_sigma = popt[1], abs(popt[2])
         return mass_shift, mass_sigma, pcov[0][0]
+
         
     def total(df_features, psms, mean=0, sigma=False, mean_mz=0, mass_accuracy_ppm=10, isotopes_array=[0, ]):
             mz_array_ms1 = df_features['mz'].values
@@ -622,7 +629,9 @@ def run():
         merge_df[ 's1_'+'cv'+short_suffixes[suf] ] = merge_df['s1_std'+short_suffixes[suf]] / merge_df['s1_mean'+short_suffixes[suf]]
         merge_df[ 's2_'+'cv'+short_suffixes[suf] ] = merge_df['s2_std'+short_suffixes[suf]] / merge_df['s2_mean'+short_suffixes[suf]]
         merge_df[ 'summ_cv'+short_suffixes[suf] ] = merge_df['s1_cv'+short_suffixes[suf]] + merge_df['s2_cv'+short_suffixes[suf]]
+        merge_df[ 'sq_summ_cv'+short_suffixes[suf] ] = np.sqrt(merge_df['s1_cv'+short_suffixes[suf]]**2 + merge_df['s2_cv'+short_suffixes[suf]]**2)
         merge_df[ 'max_cv'+short_suffixes[suf] ] = merge_df.loc[:, ['s1_cv'+short_suffixes[suf], 's2_cv'+short_suffixes[suf]] ].max(axis=1)
+        
         merge_df.drop(columns=[ 's1_mean'+short_suffixes[suf], 's2_mean'+short_suffixes[suf], 
                                 's1_std'+short_suffixes[suf], 's2_std'+short_suffixes[suf] ], inplace=True)
 
@@ -639,13 +648,15 @@ def run():
         merge_df['tool'] = merge_df['tool'].apply(lambda x: x.split('_')[-1])
     
     # min number of Nan values and min summ or max CV
-    elif args['choice'] == 1 or args['choice'] == 2 :
+    elif args['choice'] == 1 or args['choice'] == 2 or args['choice'] == 4 :
         num_na_cols = ['num_NaN' + short_suffixes[suf] for suf in suffixes]
         merge_df['NaN_border'] = merge_df[num_na_cols].min(axis=1)
         if args['choice'] == 1 :
             cv = 'summ_cv'
         if args['choice'] == 2 :
             cv = 'max_cv'
+        if args['choice'] == 4 :
+            cv = 'sq_summ_cv'
         for suf in suffixes :
             merge_df['masked_CV' + short_suffixes[suf] ] = merge_df[ cv + short_suffixes[suf] ].mask(merge_df[ 'num_NaN' + short_suffixes[suf] ] > merge_df['NaN_border'])
         masked_CV_cols = ['masked_CV' + short_suffixes[suf] for suf in suffixes]
@@ -810,7 +821,7 @@ def run():
             d[suf] = diff_out[suf].query('(`log2_FC` > 0.5 or `log2_FC` < -0.5) and `P(PECA)` < @Bonferroni')
 
 
-        comp_df = d[full_suf[0] ][ d[full_suf[0] ]['S/N'] > 0.01 ].loc[:, ['Protein', 'log2_FC']]
+        comp_df = d[full_suf[0] ][ d[full_suf[0]]['S/N'] > 0.01 ].loc[:, ['Protein', 'log2_FC']]
         for suf in full_suf[1:] :
             comp_df = comp_df.merge(d[suf][d[suf]['S/N'] > 0.01 ].loc[:, ['Protein', 'log2_FC']],
                                     on='Protein', how='outer', suffixes = ('', '_'+suf) )
