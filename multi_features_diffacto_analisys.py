@@ -15,10 +15,11 @@ from matplotlib_venn import venn3, venn3_circles
 from pyteomics.openms import featurexml
 
 import venn
-from venn import venn
-    
+from venn import venn    
 from scipy.stats import pearsonr 
 from scipy.optimize import curve_fit
+
+
 def run():
     parser = argparse.ArgumentParser(
         description = 'run multiple feature detection matching and diffacto for scavager results',
@@ -300,11 +301,38 @@ def run():
 
     def calibrate_mass(bwidth, mass_left, mass_right, true_md):
 
-        bbins = np.arange(-mass_left, mass_right, bwidth)
+        bbins = np.arange(mass_left, mass_right, bwidth)
+        num_bins = len(bbins)
         H1, b1 = np.histogram(true_md, bins=bbins)
         b1 = b1 + bwidth
         b1 = b1[:-1]
-        popt, pcov = curve_fit(noisygaus, b1, H1, p0=[1, np.median(true_md), 1, 1])
+        H_marg = 2*np.median(H1)
+        i = np.argmax(H1)
+        j = i
+        k = i
+        while H1[j] > H_marg :
+            j -= 1
+        while H1[k] > H_marg :
+            k += 1
+        w = (k-j)
+        rr = i+w
+        ll = i-w
+    #        print(i, j, k, w, i-w, i+w)
+        t = []
+#        print(b1[ll]-bwidth , b1[rr])
+        for el in true_md :
+            if el > b1[ll]-bwidth and el < b1[rr] :
+                t.append(el)
+        bbins = np.arange(min(t), max(t) , bwidth*(2*w/num_bins))
+        H2, b2 = np.histogram(t, bins=bbins)
+    #    print(len(H2), len(b2))
+
+    #    plt.hist(t , bins=bbins, color='r', alpha=0.9)
+    #    fig, ax = plt.subplots(1, 1, figsize=(12, 9))
+#        n, bins, patches = plt.hist(t, bins=bbins, alpha=0.9)
+#        print(n[np.argmax(n)-20:np.argmax(n)+20])
+
+        popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[1, np.median(t), 1, 1])
         mass_shift, mass_sigma = popt[1], abs(popt[2])
         return mass_shift, mass_sigma, pcov[0][0]
 
@@ -355,7 +383,7 @@ def run():
         for kk, value in results_psms_rt.items():
             results_psms_rt_new[kk] = sorted(value, key=lambda x: abs(x[1]))[0]
             ar_rt.append(results_psms_rt_new[kk][2])
-        mean, sigma, _ = calibrate_mass(max(rtEnd_array_ms1)/1000,-min(ar_rt),max(ar_rt),ar_rt)
+        mean, sigma, _ = calibrate_mass(max(rtEnd_array_ms1)/1000, min(ar_rt), max(ar_rt),ar_rt)
         return(mean,sigma)
      
     def found_mean_sigma_mz(df_features,psms,mean_rt=0,sigma_rt=False):
@@ -366,7 +394,7 @@ def run():
         for kk, value in results_psms_mz.items():
             results_psms_mz_new[kk] = sorted(value, key=lambda x: abs(x[1]))[0]
             ar_masses.append(results_psms_mz_new[kk][1])
-        mean_mz, sigma_mz,_ = calibrate_mass(0.2,-min(ar_masses),max(ar_masses),ar_masses)
+        mean_mz, sigma_mz,_ = calibrate_mass(0.2, min(ar_masses), max(ar_masses), ar_masses)
         return mean_mz, sigma_mz
 
     def optimazed_search_with_isotope_error_(df_features,psms,mean_rt=False,sigma_rt=False,  mean_mz = False,sigma_mz = False,isotopes_array=[0,1,-1,2,-2]):
@@ -419,7 +447,7 @@ def run():
                 
                 print(suf, 'features', sample, 'DONE')
                 temp_df.to_csv(out_directory + '/feats_matched/' + sample + '_' + suf + '.tsv', sep='\t', columns=cols)
-                print(sample, 'PSMs matched' , temp_df['feature_intensityApex'].notna().sum() )
+                print(sample, 'PSMs matched' , temp_df['feature_intensityApex'].notna().sum(), '/', len(temp_df) )
                 print(suf + ' MATCHED')
 
 
