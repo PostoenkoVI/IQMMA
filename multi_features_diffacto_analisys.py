@@ -294,14 +294,50 @@ def run():
 
     
     def calibrate_mass(bwidth, mass_left, mass_right, true_md):
-
-        bbins = np.arange(-mass_left, mass_right, bwidth)
+        
+        bbins = np.arange(mass_left, mass_right, bwidth)
+        num_bins = len(bbins)
         H1, b1 = np.histogram(true_md, bins=bbins)
         b1 = b1 + bwidth
         b1 = b1[:-1]
-        popt, pcov = curve_fit(noisygaus, b1, H1, p0=[1, np.median(true_md), 1, 1])
+        H_marg = 2*np.median(H1)
+#        logging.debug('len(H1): %d, len(b1): %d', len(H1), len(b1))
+#        logging.debug(str(H1[np.argmax(H1)-10:np.argmax(H1)+10]))
+#        logging.debug(str(H_marg))
+        i = np.argmax(H1)
+        max_k = len(H1) - 1
+        j = i
+        k = i
+        while j >= 0 and H1[j] > H_marg:
+            j -= 1
+        while k <= max_k and H1[k] > H_marg:
+            k += 1            
+        w = (k-j)
+        rr = i+w+1
+        ll = i-w-1
+    #        print(i, j, k, w, i-w, i+w)
+        t = []
+#        logging.debug('Интервал значений ' + str(b1[ll]-bwidth) + ' ' + str(b1[rr]))
+        for el in true_md :
+            if el > b1[i]-bwidth*w and el < b1[i]+bwidth*w :
+                t.append(el)
+        # print(min(true_md), max(true_md))
+        # print(min(t), max(t))
+        # print(len(t), len(true_md))
+        # print('\n')
+        bbins = np.arange(min(t), max(t) , bwidth*(2*w/num_bins))
+        H2, b2 = np.histogram(t, bins=bbins)
+#        logging.debug('len(H2): %d, len(b2): %d', len(H2), len(b2))
+#        logging.debug(str(H2[np.argmax(H2)-20:np.argmax(H2)+20]))
+    #    plt.hist(t , bins=bbins, color='r', alpha=0.9)
+    #    fig, ax = plt.subplots(1, 1, figsize=(12, 9))
+#        n, bins, patches = plt.hist(t, bins=bbins, alpha=0.9)
+#        print(n[np.argmax(n)-20:np.argmax(n)+20])
+
+        popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[1, np.median(t), 1, 1])
         mass_shift, mass_sigma = popt[1], abs(popt[2])
         return mass_shift, mass_sigma, pcov[0][0]
+
         
 
     def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mean_mz=0, mass_accuracy_ppm=10, mean_im = 0, sigma_im = False, isotopes_array=[0, ]):
@@ -413,18 +449,18 @@ def run():
         return results
     
     
-     def found_mean_sigma(df_features,psms,parameters, mean1=0,sigma1=False,mean2=0,sigma2=False, mean_mz = 0, sigma_mz = False):
+    def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,sigma1=False,mean2=0,sigma2=False, mean_mz = 0, sigma_mz = False):
 
         rtStart_array_ms1 = df_features['rtStart'].values
         rtEnd_array_ms1 = df_features['rtEnd'].values
 
         if parameters == 'rt1' or parameters == 'rt2':
-            h = (max(rtStart_array_ms1) if parameters == 'rt1' else max(rtEnd_array_ms1)) /1000
+            h = (max(rtStart_array_ms1)/1000 if parameters == 'rt1' else max(rtEnd_array_ms1)/1000) 
             results_psms = total(df_features = df_features,psms = psms,mass_accuracy_ppm = 100)
 
         if parameters == 'mz_diff_ppm':
             h = 0.2
-            results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2)
+            results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2,mass_accuracy_ppm = 100)
 
         if parameters == 'im_diff':
             results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz)
@@ -437,15 +473,22 @@ def run():
 
         ar = []
         for value in results_psms.values():
-            ar.append(sorted(value, key=lambda x: abs(x['mz_diff_ppm']))[0][parameters])
-        try:
-            mean, sigma,_ = calibrate_mass(h,-min(ar),max(ar),ar)
-        except:
-            mean, sigma,_ = calibrate_mass(h*20,-min(ar),max(ar),ar)
+            if sort == 'intensity':
+                ar.append(sorted(value, key=lambda x: -abs(x[sort]))[0][parameters])
+            else:
+                ar.append(sorted(value, key=lambda x: abs(x[sort]))[0][parameters])
+
+        # plt.hist(ar)
+
+        mean, sigma,_ = calibrate_mass(h,min(ar),max(ar),ar)
+        # try:
+        #     mean, sigma,_ = calibrate_mass(h,min(ar),max(ar),ar)
+        # except:
+        #     mean, sigma,_ = calibrate_mass(h,min(ar),max(ar),ar)
         return mean, sigma
     
     
-     def optimazed_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_rt1=False,mean_rt2=False,sigma_rt2=False,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2]):
+    def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_rt1=False,mean_rt2=False,sigma_rt2=False,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2]):
         if mean_rt1 == False and sigma_rt1 == False:
             mean_rt1, sigma_rt1 = found_mean_sigma(df_features,psms, 'rt1')
         if mean_rt2 == False and sigma_rt2 == False:
@@ -492,7 +535,7 @@ def run():
                 feats = pd.read_csv( out_directory + '/features/' + sample + '_features_' + suf + '.tsv', sep = '\t')[['mz', 'charge', 'rtStart', 'rtEnd', 'intensityApex']]
                 feats = feats.sort_values(by='mz')
                 print(suf, 'features', sample, '\n', 'START')
-                temp_df = optimazed_search_with_isotope_error_(feats, PSM )[0]
+                temp_df = optimized_search_with_isotope_error_(feats, PSM )[0]
                 cols = ['calc_neutral_pep_mass','assumed_charge','RT exp','spectrum','peptide','protein','df_features','feature_intensityApex']
               
                 median = temp_df['feature_intensityApex'].median()
