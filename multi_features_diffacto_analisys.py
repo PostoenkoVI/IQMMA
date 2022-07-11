@@ -366,6 +366,7 @@ def run():
         
 
     def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mean_mz=0, mass_accuracy_ppm=10, mean_im = 0, sigma_im = False, isotopes_array=[0, ]):
+        df_features = df_features.sort_values(by='mz')
         mz_array_ms1 = df_features['mz'].values
         ch_array_ms1 = df_features['charge'].values
         rtStart_array_ms1 = df_features['rtStart'].values
@@ -492,7 +493,10 @@ def run():
 
             if 'im' in df_features.columns:
                 im_array_ms1 = df_features['im'].values
-                h = (max(im_array_ms1) - min(im_array_ms1))/15
+                if len(set(im_array_ms1)) != 1:
+                    h = (max(im_array_ms1) - min(im_array_ms1))/15
+                else:
+                    return 0,0
             else:
                 return 0,0
 
