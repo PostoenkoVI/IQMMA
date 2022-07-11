@@ -105,26 +105,26 @@ def run():
     
     logging.info('Started')
     if args['cfg'] :
-    if args['cfg_category'] :
-        cat = args['cfg_category']
-    else :
-        cat = 'settings_one'
-    config = configparser.RawConfigParser(allow_no_value=True, empty_lines_in_values=False, )
-    config.read(os.path.join(os.path.abspath(__file__), args['cfg']))
-    for key in args.keys() :
-        if args[key] == None :
-            try :
-                args[key] = config[cat][key]
-            except :   
-                if args[key] == None :
-                    try :
-                        args[key] = config['DEFAULT'][key]
-                    except :
-                        pass
-                    finally :
-                        pass
-            finally :
-                pass
+        if args['cfg_category'] :
+            cat = args['cfg_category']
+        else :
+            cat = 'settings_one'
+        config = configparser.RawConfigParser(allow_no_value=True, empty_lines_in_values=False, )
+        config.read(os.path.join(os.path.abspath(__file__), args['cfg']))
+        for key in args.keys() :
+            if args[key] == None :
+                try :
+                    args[key] = config[cat][key]
+                except :   
+                    if args[key] == None :
+                        try :
+                            args[key] = config['DEFAULT'][key]
+                        except :
+                            pass
+                        finally :
+                            pass
+                finally :
+                    pass
 #    print(args)
 #    print(args['s1'].split())
 
