@@ -56,6 +56,7 @@ def run():
     parser.add_argument('-logs', help='level of logging, (DEBUG, INFO, WARNING, ERROR, CRITICAL)', default='WARNING')
     parser.add_argument('-log_path', help='path to logging file', default='./mult_feat_diff.log')
     parser.add_argument('-cfg', help='path to config .ini file')
+    parser.add_argument('-cfg_category', help='name of category to prioritize in the .ini file')
     parser.add_argument('-dif', help='path to Diffacto')
     parser.add_argument('-scav2dif', help='path to scav2diffacto')
     parser.add_argument('-s1', nargs='+', help='input files PSMs_full.tsv (and _proteins.tsv should be in the same directory) for S1 sample')
