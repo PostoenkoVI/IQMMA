@@ -1,5 +1,6 @@
 import argparse
 import subprocess
+import sys
 import configparser
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -13,12 +14,13 @@ from os import listdir
 from matplotlib.ticker import PercentFormatter
 from matplotlib_venn import venn3, venn3_circles
 from pyteomics.openms import featurexml
-
 import venn
 from venn import venn
     
 from scipy.stats import pearsonr 
 from scipy.optimize import curve_fit
+import logging
+
 def run():
     parser = argparse.ArgumentParser(
         description = 'run multiple feature detection matching and diffacto for scavager results',
@@ -51,6 +53,8 @@ def run():
     ''',
         formatter_class = argparse.ArgumentDefaultsHelpFormatter, fromfile_prefix_chars='@')
     
+    parser.add_argument('-logs', help='level of logging, (DEBUG, INFO, WARNING, ERROR, CRITICAL)', default='WARNING')
+    parser.add_argument('-log_path', help='path to logging file', default='./mult_feat_diff.log')
     parser.add_argument('-cfg', help='path to config .ini file')
     parser.add_argument('-dif', help='path to Diffacto')
     parser.add_argument('-scav2dif', help='path to scav2diffacto')
@@ -86,8 +90,20 @@ def run():
     parser.add_argument('-min_samples', help='minimum number of samples for peptide usage', default='3')
 #    parser.add_argument('-version', action='version', version='%s' % (pkg_resources.require("scavager")[0], ))
     args = vars(parser.parse_args())
-
-
+    
+    loglevel = args['logs']
+    numeric_level = getattr(logging, loglevel.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError('Invalid log level: %s' % loglevel)
+    logging.basicConfig(format='%(levelname)s: %(asctime)s %(message)s', filename=args['log_path'], filemode='w', encoding='utf-8', level=numeric_level)
+    logging.getLogger('matplotlib').setLevel(logging.ERROR)
+    
+    def log_subprocess_output(pipe):
+        for line in iter(pipe.readline, b''): # b'\n'-separated lines
+            logging.info('From subprocess: %r', line)
+            sys.stdout.write(line)
+    
+    logging.info('Started')
     if args['cfg'] :
         config = configparser.RawConfigParser(allow_no_value=True, empty_lines_in_values=False, )
         config.read(os.path.join(os.path.abspath(__file__), args['cfg']))
@@ -109,15 +125,15 @@ def run():
 #    print(args['s1'].split())
 
     if not args['dif'] :
-        print('path to diffacto file is required')
+        logging.warning('path to diffacto file is required')
         return -1
 
     if not args['scav2dif'] :
-        print('path to scav2diffacto.py file is required')
+        logging.warning('path to scav2diffacto.py file is required')
         return -1
     
     if not args['outdir'] :
-        print('path to output directory is required')
+        logging.warning('path to output directory is required')
         return -1
     
     arg_suff = {'dino': 'dino', 'bio' : 'bio', 'bio2' : 'bio2', 'openms' : 'openMS'}
@@ -128,13 +144,13 @@ def run():
             
     k = len(suffixes)
     if k == 0 :
-        print('At least one feature finder shoud be given!')
+        logging.warning('At least one feature finder shoud be given!')
         return -1
     elif k == 1 :
-        print('One diffacto run')
+        logging.warning('One diffacto run')
         args['venn'] = 0
     elif k >= 2 :
-        print('Second diffacto run is applied')
+        logging.info('Second diffacto run is applied')
     
     PSMs_full_paths = []
     for sample_num in ['s1', 's2']:
@@ -142,19 +158,19 @@ def run():
             for z in args[sample_num].split():
                 PSMs_full_paths.append(z)
         else :
-            print('sample '+ sample_num + ' *_PSMs_full.tsv files are required')
+            logging.warning('sample '+ sample_num + ' *_PSMs_full.tsv files are required')
             return -1
 
     if args['mzML'] and (len(args['mzML'].split()) == len(PSMs_full_paths)) :
         mzML_paths = args['mzML'].split()
     else :
-        print('paths to all .mzML files are required')
+        logging.warning('paths to all .mzML files are required')
         return -1
     
     if args['sampleNames'] and (len(args['sampleNames'].split()) == len(PSMs_full_paths)) :
         samples = args['sampleNames'].split()
     else :
-        print('short name for every PSMs file is required')
+        logging.warning('short name for every PSMs file is required')
         return -1
     
     out_directory = args['outdir']
@@ -170,24 +186,23 @@ def run():
     args['choice'] = int( args['choice'])
     args['norm'] = int( args['norm'])
     
-#    print(PSMs_full_paths)
-    print(mzML_paths)
-    print(out_directory)
-    print(suffixes)
-    print(sample_1)
-    print(sample_2)
-    print('mixed = ', args['mixed'])
-    print('venn = ', args['venn'])
-    print('choice = ', args['choice'])
-    print('overwrite_features = ', args['overwrite_features'])
-    print('overwrite_first_diffacto = ', args['overwrite_first_diffacto'])
-    print('overwrite_new_PSMs = ', args['overwrite_new_PSMs'])
-    print('overwrite_matching = ', args['overwrite_matching'], '\n\n')
+    logging.debug('PSMs_full_paths: %s', PSMs_full_paths)
+    logging.debug('mzML_paths: %s', mzML_paths)
+    logging.debug('out_directory: %s', out_directory)
+    logging.debug('suffixes: %s', suffixes)
+    logging.debug('sample_1: %s', sample_1)
+    logging.debug('sample_2: %s', sample_2)
+    logging.debug('mixed = %s', args['mixed'])
+    logging.debug('venn = %s', args['venn'])
+    logging.debug('choice = %s', args['choice'])
+    logging.debug('overwrite_features = %s', args['overwrite_features'])
+    logging.debug('overwrite_first_diffacto = %s', args['overwrite_first_diffacto'])
+    logging.debug('overwrite_new_PSMs = %s', args['overwrite_new_PSMs'])
+    logging.debug('overwrite_matching = %d', args['overwrite_matching'])
     
 #    subprocess.call(['python3', args['dif'], '-i', args['peptides'], '-samples', args['samples'], '-out',\
 #     args['out'], '-normalize', args['norm'], '-impute_threshold', args['impute_threshold'], '-min_samples', args['min_samples']])
 
-    
     subprocess.call(['mkdir', '-p', out_directory])
 
 ## Генерация фич
@@ -200,18 +215,20 @@ def run():
 # На выходе добавляет в папку out_directory/features файлы *sample*_features_dino.tsv
 
     if args['dino'] :
-        print('\n')
         for path, sample in zip(mzML_paths, samples) :
             outName = sample + '_features_' + 'dino' + '.tsv'
             outName_false = outName + '.features.tsv'
             if args['overwrite_features'] == 1 or not os.path.exists(outDir + '/' + outName) :
                 with open(os.path.join(outDir, outName_false), mode='w+', buffering= -1, encoding='utf-8') :
-                    print('Writing features' + ' dino ' + sample)
-                    subprocess.call([args['dino'], '--outDir='+ outDir, '--outName='+ outName, path])
+                    logging.info('\n' + 'Writing features' + ' dino ' + sample + '\n')
+                    process = subprocess.Popen([args['dino'], '--outDir='+ outDir, '--outName='+ outName, path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                    with process.stdout:
+                        log_subprocess_output(process.stdout)
+                    exitscore = process.wait()
+                    logging.debug(exitscore)
                 os.rename(outDir + '/' + outName + '.features.tsv', outDir + '/' + outName)
             else :
-                print('Not overwriting features ' + ' dino ' + sample)
-        print('\n')
+                logging.info('\n' + 'Not overwriting features ' + ' dino ' + sample + '\n')
 
 ### Biosaur
 
@@ -219,15 +236,17 @@ def run():
 # Важно: опция -hvf 1000 (без нее результаты хуже)
 
     if args['bio'] :
-        print('\n')
         for path, sample in zip(mzML_paths, samples) :
             outPath = out_directory + '/features/' + sample + '_features_bio.tsv'
             if args['overwrite_features'] == 1 or not os.path.exists(outPath) :
-                print('Writing features ' + ' bio ' + sample)
-                subprocess.call([args['bio'], path, '-out', outPath, '-hvf', '1000'])
+                logging.info('\n' + 'Writing features ' + ' bio ' + sample + '\n')
+                process = subprocess.Popen([args['bio'], path, '-out', outPath, '-hvf', '1000'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                with process.stdout:
+                    log_subprocess_output(process.stdout)
+                exitscore = process.wait()
+                logging.debug(exitscore)
             else :
-                print('Not ovetwriting features ' + ' bio ' + sample)
-        print('\n')
+                logging.info('\n' + 'Not ovetwriting features ' + ' bio ' + sample + '\n')
 
 ### Biosaur2
 
@@ -235,40 +254,47 @@ def run():
 # Важно: опция -hvf 1000 (без нее результаты хуже)
 
     if args['bio2'] :
-        print('\n')
         for path, sample in zip(mzML_paths, samples) :
             outPath = out_directory + '/features/' + sample + '_features_bio2.tsv'
             if args['overwrite_features'] == 1 or not os.path.exists(outPath) :
-                print('Writing features ' + ' bio2 ' + sample)
-                subprocess.call([args['bio2'], path, '-o', outPath, '-hvf', '1000', '-minlh', '3'])
+                logging.info('\n' + 'Writing features ' + ' bio2 ' + sample + '\n')
+                process = subprocess.Popen([args['bio2'], path, '-o', outPath, '-hvf', '1000', '-minlh', '3'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                with process.stdout:
+                    log_subprocess_output(process.stdout)
+                exitscore = process.wait()
+                logging.debug(exitscore)
             else :
-                print('Not ovetwriting features ' + ' bio2 ' + sample)
-        print('\n')
+                logging.info('\n' + 'Not ovetwriting features ' + ' bio2 ' + sample + '\n')
+
             
 ### OpenMS
 
 # На выходе создает в out_directory папку OpenMS с файлами *.featureXML и добавляет в папку out_directory/features файлы *sample*_features_openMS.tsv
     
     if args['openms'] :
-        print('\n')
         out_path = out_directory + '/openMS/'
         subprocess.call(['mkdir', '-p', out_path])
-        
-        
+            
         for path, sample in zip(mzML_paths, samples) :
             out_path = out_directory + '/openMS/' + sample + '.featureXML'
             if args['overwrite_features'] == 1 or not os.path.exists(out_path) :
-                print('Writing .featureXML ' + ' openMS ' + sample)
-                subprocess.call([args['openms'], '-in', path, '-out', out_path, '-algorithm:isotopic_pattern:charge_low', '2', '-algorithm:isotopic_pattern:charge_high', '7'])
+                logging.info('\n' + 'Writing .featureXML ' + ' openMS ' + sample + '\n')
+
+                process = subprocess.Popen([args['openms'], '-in', path, '-out', out_path, '-algorithm:isotopic_pattern:charge_low', '2', '-algorithm:isotopic_pattern:charge_high', '7'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                with process.stdout:
+                    log_subprocess_output(process.stdout)
+                exitscore = process.wait()
+                logging.debug(exitscore)
             else :
-                print('Not overwriting .featureXML ' + ' openMS ' + sample)
-        print('\n')
+                logging.info('\n' + 'Not ovetwriting .featureXML ' + ' openMS ' + sample + '\n')
+
+
 
         for path, sample in zip(mzML_paths, samples) :
             out_path = out_directory + '/openMS/' + sample + '.featureXML'
             o = os.path.join(out_directory + '/features', sample + '_features_' + 'openMS.tsv')
             if args['overwrite_features'] == 1 or not os.path.exists(o) : 
-                print('Writing features ' + ' openMS ' + sample)
+                logging.info('Writing features ' + ' openMS ' + sample)
                 a = featurexml.read(out_path)
 
                 features_list = []
@@ -284,8 +310,7 @@ def run():
                 b = pd.DataFrame(features_list, columns = ['id', 'mz', 'charge', 'rtStart', 'rtEnd', 'intensityApex'])
                 b.to_csv(o, sep='\t', encoding='utf-8')
             else :
-                print('Not overwriting features ' + ' openMS ' + sample)
-        print('\n')
+                logging.info('Not overwriting features ' + ' openMS ' + sample + '\n')
 
 
 ## Функции для сопоставления
@@ -453,7 +478,7 @@ def run():
 
         rtStart_array_ms1 = df_features['rtStart'].values
         rtEnd_array_ms1 = df_features['rtEnd'].values
-
+        
         if parameters == 'rt1' or parameters == 'rt2':
             h = (max(rtStart_array_ms1)/1000 if parameters == 'rt1' else max(rtEnd_array_ms1)/1000) 
             results_psms = total(df_features = df_features,psms = psms,mass_accuracy_ppm = 100)
@@ -491,16 +516,20 @@ def run():
     def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_rt1=False,mean_rt2=False,sigma_rt2=False,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2]):
         if mean_rt1 == False and sigma_rt1 == False:
             mean_rt1, sigma_rt1 = found_mean_sigma(df_features,psms, 'rt1')
+            
         if mean_rt2 == False and sigma_rt2 == False:
             mean_rt2, sigma_rt2 = found_mean_sigma(df_features,psms, 'rt2')
+        
         if mean_mz == False and sigma_mz == False:
             mean_mz, sigma_mz = found_mean_sigma(df_features,psms,'mz_diff_ppm', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2)   
+        
         if mean_im == False and sigma_im == False:
             mean_im, sigma_im = found_mean_sigma(df_features,psms,'im_diff', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2, mean_mz = mean_mz, sigma_mz= sigma_mz)  
+        
         # print(mean_rt1, sigma_rt1,mean_rt2, sigma_rt2,mean_mz, sigma_mz )    
+        
         results_isotope = total(df_features = df_features,psms =psms,mean1 = mean_rt1, sigma1 = sigma_rt1,mean2 = mean_rt2, sigma2 = sigma_rt2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, isotopes_array=[0,1,-1,2,-2])
         results_isotope_end = [] 
-        from collections import Counter
         cnt = Counter([z[0]['i'] for z in results_isotope.values()])
         for i in cnt.values():
             results_isotope_end.append(i/len(psms))
@@ -520,32 +549,36 @@ def run():
 # end_isotope_, cnt.keys(),
 
 ### Сопоставление
-
-                                    
+                 
     a = out_directory + '/feats_matched'
     subprocess.call(['mkdir', '-p', a])
 
 #    suffixes = ['dino', 'bio', 'bio2', 'openMS'] - уже заданы
-    print('Start matching features')
+    logging.info('Start matching features')
     for PSM_path, sample in zip(PSMs_full_paths, samples) :
         PSM = pd.read_csv(PSM_path, sep = '\t')[['calc_neutral_pep_mass', 'assumed_charge', 'RT exp', 'spectrum', 'peptide','protein']]
-        print('sample', sample)
+        logging.info('sample %s', sample)
         for suf in suffixes :
             if args['overwrite_matching'] == 1 or not os.path.exists(out_directory + '/feats_matched/' + sample + '_' + suf + '.tsv') :
                 feats = pd.read_csv( out_directory + '/features/' + sample + '_features_' + suf + '.tsv', sep = '\t')[['mz', 'charge', 'rtStart', 'rtEnd', 'intensityApex']]
                 feats = feats.sort_values(by='mz')
-                print(suf, 'features', sample, '\n', 'START')
+
+                logging.info(suf + ' features ' + sample + '\n' + 'START')
                 temp_df = optimized_search_with_isotope_error_(feats, PSM )[0]
+
                 cols = ['calc_neutral_pep_mass','assumed_charge','RT exp','spectrum','peptide','protein','df_features','feature_intensityApex']
               
                 median = temp_df['feature_intensityApex'].median()
                 temp_df['med_norm_feature_intensityApex'] = temp_df['feature_intensityApex']/median
                 cols.append('med_norm_feature_intensityApex')
                 
-                print(suf, 'features', sample, 'DONE')
+                logging.info(suf + ' features ' + sample + ' DONE')
                 temp_df.to_csv(out_directory + '/feats_matched/' + sample + '_' + suf + '.tsv', sep='\t', columns=cols)
-                print(sample, 'PSMs matched' , temp_df['feature_intensityApex'].notna().sum() )
-                print(suf + ' MATCHED')
+
+                logging.info(sample + ' PSMs matched ' + str(temp_df['feature_intensityApex'].notna().sum()) + '/' 
+                             + str(len(temp_df)) + ' ' + str(temp_df['feature_intensityApex'].notna().sum()/len(temp_df)*100) + '%')
+                logging.info(suf + ' MATCHED')
+
 
 
 ## Создание новых PSMs_full_tool.tsv
@@ -553,7 +586,7 @@ def run():
                                     
 #    suffixes = ['dino', 'bio', 'bio2', 'openMS'] - уже заданы в начале
     
-    print('Creating new PSMs_full')
+    logging.info('Creating new PSMs_full')
     feature_colomn_name = 'feature_intensityApex'
     if args['norm'] == 0 :
         feature_colomn_name = 'feature_intensityApex'
@@ -568,12 +601,12 @@ def run():
             feats = out_directory + '/feats_matched/' + sample + '_' + suf + '.tsv'
             new_f = f.replace('PSMs_full.tsv', 'PSMs_full_' + suf + '.tsv')
             if args['overwrite_new_PSMs'] == 1 or not os.path.exists(os.path.join(old_path, new_f)) : 
-                feat_df = pd.read_csv(feats , sep='\t')[['peptide', 'protein', feature_colomn_name]]
+                feat_df = pd.read_csv(feats , sep='\t')[['peptide', 'protein', feature_colomn_name]].dropna(axis=0, inplace=True, subset=feature_colomn_name)
                 PSM = PSM.merge(feat_df,  how = 'inner', on = ['peptide', 'protein'], suffixes = (None, '^'))
                 PSM.rename(columns={'MS1Intensity' : 'Old_Intensity', feature_colomn_name : 'MS1Intensity'}, inplace=True)
                 PSM['MS1Intensity'] = PSM['MS1Intensity'].fillna(0.0)
-                PSM.to_csv(os.path.join(old_path, new_f), sep = '\t', encoding='utf-8')
-    print('New PSMs_full created')
+                PSM.to_csv(os.path.join(old_path, new_f), sep = '\t', encoding='utf-8', index=False, columns=list(PSM.columns))
+    logging.info('New PSMs_full created')
 
 
 ## Первый прогон Diffacto
@@ -619,14 +652,19 @@ def run():
             path_to_name = PSM_path[:-l]
             os.rename( path_to_name + file_name_with_tool,  path_to_name + file_name )
         
-        print('Diffacto START')
+        logging.info('Diffacto START')
         
-        if args['overwrite_first_diffacto'] == 1 or k == 1 or not os.path.exists(diff_out_name) :
-            subprocess.call([args['scav2dif'], '-dif', args['dif'], '-S1', *s1, '-S2', *s2,
+        if args['overwrite_first_diffacto'] == 1 or k == 1 or not os.path.exists(diff_out_name) :    
+            process = subprocess.Popen([args['scav2dif'], '-dif', args['dif'], '-S1', *s1, '-S2', *s2,
                             '-out', diff_out_name, '-samples', diff_sample_name, '-peptides', diff_peptides_name,
-                            '-norm', args['normDiff'], '-impute_threshold', args['impute_threshold'], '-min_samples', args['min_samples']])
+                            '-norm', args['normDiff'], '-impute_threshold', args['impute_threshold'], 
+                            '-min_samples', args['min_samples']], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            with process.stdout:
+                log_subprocess_output(process.stdout)
+            exitscore = process.wait()
+            logging.debug(exitscore)
 
-        print('Diffacto END')
+        logging.info('Diffacto END')
 
         for PSM_path, sample in zip(PSMs_full_paths, samples) :
             file_name = PSM_path.split('/')[-1]
@@ -688,10 +726,11 @@ def run():
         for suf in full_suf :
             col = 'log2_FC_'+suf
             dataset_dict[suf] = set(comp_df[comp_df[col].notna()]['Protein'])
-
-        venn(dataset_dict, cmap=plt.get_cmap('Dark2'), fontsize=28, legend_loc="upper left", alpha = 0.5, figsize = (16, 16))
+        fig, ax = plt.subplots(1, 1, figsize=(16, 16))
+        venn(dataset_dict, cmap=plt.get_cmap('Dark2'), fontsize=28, alpha = 0.5, ax=ax)
+        ax.legend(prop={'size': 28,}, loc='upper left')
         plt.savefig(out_directory + '/venn_no_mix.png')
-        print('First Venn created')
+        logging.info('First Venn created')
                                     
     # samples = ['10_15ng', '11_15ng', '12_15ng', '4_7-5ng', '5_7-5ng', '6_7-5ng']
     # suffixes = ['dino', 'bio', 'bio2', 'openMS']
@@ -718,7 +757,7 @@ def run():
             temp_df.drop_duplicates(subset='peptide', keep='first', inplace=True)
             temp_df.rename(columns={feature_colomn_name: sample + short_suffixes[suf]}, inplace = True)
             aggr_df = aggr_df.merge(temp_df,  how = 'outer', on = ['peptide', 'protein'], suffixes = (None, '^'))
-            print('peptide aggregating', sample + ' ' + suf + ' done' )
+            logging.debug('peptide aggregating ' + sample + ' ' + suf + ' done' )
     #    aggr_df.drop_duplicates(keep='first', inplace = True)
         aggr_df.to_csv( out_directory + '/diffacto/aggr_intens' + sample + '.tsv', sep='\t', 
                        index = list(aggr_df.index), columns = list(aggr_df.columns), encoding = 'utf-8')
@@ -737,7 +776,7 @@ def run():
 ### Выбор интенсивностей
 
 
-    print('Choosing intensities STARTED')
+    logging.info('Choosing intensities STARTED')
     for suf in suffixes :
         suf_cols = [sample + short_suffixes[suf] for sample in samples]
         col = 'num_NaN' + short_suffixes[suf]
@@ -798,7 +837,7 @@ def run():
 #        merge_df.drop(columns=masked_CV_cols, inplace=True)
         
     merge_df.to_csv(out_directory + '/diffacto/aggr_intens_all.tsv', sep='\t', index = list(merge_df.index), columns = list(merge_df.columns), encoding = 'utf-8')  
-    print('Choosing intensities DONE')
+    logging.info('Choosing intensities DONE')
 
 
 ## Второй прогон диффакто
@@ -840,7 +879,7 @@ def run():
             mixed_intens_df['Intensity'] = pd.Series(data = Intensity, index = mixed_intens_df.index).fillna(0.0)
             mixed_intens_df.to_csv(out_directory + '/diffacto/mixed_intensity/' + sample + '.tsv', sep='\t', 
                                    index = list(mixed_intens_df.index), columns = list(mixed_intens_df.columns), encoding = 'utf-8')
-        print('Creating new mixed_intensity files DONE')
+        logging.info('Creating new mixed_intensity files DONE')
                                     
 # Создает новые PSMs_full_mixed.tsv
 # Читает PSMs_full_base.tsv и mixed_intensity, заменяет колонку MS1Intensity на интенсивности из mixed
@@ -861,7 +900,7 @@ def run():
 
             new_f = f.replace('PSMs_full.tsv', 'PSMs_full_' + suf + '.tsv' )
             psm_df.to_csv(old_path + new_f, sep = '\t', encoding='utf-8')
-        print('Creating new PSMs_full DONE')
+        logging.info('Creating new PSMs_full DONE')
 
 # Собственно прогон Diffacto на новых PSM файлах
 # кусок скопипастен сверху, просто заменил суффикс
@@ -899,10 +938,17 @@ def run():
                 l = len(file_name)
                 path_to_name = PSM_path[:-l]
                 os.rename( path_to_name + file_name_with_tool,  path_to_name + file_name )
+                
             
-            subprocess.call([args['scav2dif'], '-dif', args['dif'], '-S1', *s1, '-S2', *s2,
+            process = subprocess.Popen([args['scav2dif'], '-dif', args['dif'], '-S1', *s1, '-S2', *s2,
                         '-out', diff_out_name, '-samples', diff_sample_name, '-peptides', diff_peptides_name,
-                        '-norm', args['normDiff'], '-impute_threshold', args['impute_threshold'], '-min_samples', args['min_samples']])
+                        '-norm', args['normDiff'], '-impute_threshold', args['impute_threshold'], 
+                        '-min_samples', args['min_samples']], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            with process.stdout:
+                log_subprocess_output(process.stdout)
+            exitscore = process.wait()
+            logging.debug(exitscore)
+               
 
             for PSM_path, sample in zip(PSMs_full_paths, samples) :
                 file_name = PSM_path.split('/')[-1]
@@ -919,7 +965,7 @@ def run():
             l = len(file_name)
             path_to_name = PSM_path[:-l]
             os.rename( path_to_name + file_name_with_tool, path_to_name + file_name)
-        print('Second Diffacto run DONE')
+        logging.info('Second Diffacto run DONE')
         
         
         # Analysis
@@ -929,7 +975,7 @@ def run():
 
         diff_out = {}
         for suf in full_suf :
-            print(out_directory + '/diffacto/' + 'diffacto_out_' + suf + '.txt')
+            logging.info(out_directory + '/diffacto/' + 'diffacto_out_' + suf + '.txt')
             diff_out[suf] = pd.read_csv(out_directory + '/diffacto/' + 'diffacto_out_' + suf + '.txt', sep = '\t')
 
         for suf in full_suf :
@@ -984,9 +1030,11 @@ def run():
                 col = 'log2_FC_'+suf
                 dataset_dict[suf] = set(comp_df[comp_df[col].notna()]['Protein'])
 
-            venn(dataset_dict, cmap=plt.get_cmap('Dark2'), fontsize=28, legend_loc="upper left", alpha = 0.5, figsize = (16, 16))
+            fig, ax = plt.subplots(1, 1, figsize=(16, 16))
+            venn(dataset_dict, cmap=plt.get_cmap('Dark2'), fontsize=28, alpha = 0.5, ax=ax)
+            ax.legend(prop={'size': 28,}, loc='upper left')
             plt.savefig(out_directory + '/venn_mix.png')
-            print('Second Venn DONE')
+            logging.info('Second Venn DONE')
 
 if __name__ == '__main__':
     run()
