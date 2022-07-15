@@ -429,13 +429,21 @@ def run():
 
 
     def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mean_mz=0, mass_accuracy_ppm=10, mean_im = 0, sigma_im = False, isotopes_array=[0, ]):
+
+        # df_features = df_features[['mz', 'charge', 'rtStart', 'rtEnd', 'id', 'intensityApex'б]]
+
         df_features = df_features.sort_values(by='mz')
         mz_array_ms1 = df_features['mz'].values
-        ch_array_ms1 = df_features['charge'].values
+        # ch_array_ms1 = df_features['charge'].values
         rtStart_array_ms1 = df_features['rtStart'].values
         rtEnd_array_ms1 = df_features['rtEnd'].values
         feature_intensityApex = df_features['intensityApex'].values
-        
+
+        check_charge = False
+        if 'charge' in df_features.columns:
+            ch_array_ms1 = df_features['charge'].values
+            check_charge = True
+
         check_FAIMS = False
         if 'FAIMS' in df_features.columns:
             FAIMS_array_ms1 = df_features['FAIMS'].values
@@ -453,22 +461,22 @@ def run():
                     sigm_im = (max_im - min_im)/2
                 else:
                     sigm_im = sigma_im
-        
+
         from collections import defaultdict
         results = defaultdict(list)
-        
+
         if sigma1 is False:
-            max_rtstart_err = max(rtStart_array_ms1)/15
+            max_rtstart_err = max(rtStart_array_ms1)/150
             interval1 = max_rtstart_err
         else:
             interval1 = 3*sigma1
-        
+
         if sigma2 is False:
-            max_rtend_err = max(rtEnd_array_ms1)/15
+            max_rtend_err = max(rtEnd_array_ms1)/150
             interval2 = max_rtend_err
         else:
             interval2 = 3*sigma2
-            
+
         for i in isotopes_array: 
             for index, row in psms.iterrows(): 
                 psms_index = row['spectrum']  
@@ -476,11 +484,11 @@ def run():
                 psm_mass = row['precursor_neutral_mass']
                 psm_charge = row['assumed_charge']
                 psm_rt = row['RT exp']
-                psm_mz = (psm_mass+psm_charge*1.00697)/psm_charge
+                psm_mz = (psm_mass+psm_charge*1.007276)/psm_charge
                 protein = row['protein']
                 if check_im:
                     if 'im' in row:
-                        psm_im = row['im']
+                        psm_im = row['ionmobility']
                     else:
                         check_im = False
                         print('there is no column "IM" in the PSMs')
@@ -491,31 +499,30 @@ def run():
                         check_FAIMS = False
                         print('there is no column "FAIMS" in the PSMs')
                 if psms_index not in results:      
-                    a = psm_mz*(1 + mean_mz*1e-6) -  i*1.0072765/psm_charge 
+                    a = psm_mz*(1 + mean_mz*1e-6) -  i*1.003354/psm_charge 
                     mass_accuracy = mass_accuracy_ppm*1e-6*a
                     idx_l_psms1_ime = mz_array_ms1.searchsorted(a - mass_accuracy)
                     idx_r_psms1_ime = mz_array_ms1.searchsorted(a + mass_accuracy, side='right')
-                    
+
                     for idx_current_ime in range(idx_l_psms1_ime, idx_r_psms1_ime, 1):
                         # if np.nonzero(FAIMS_array_ms1[idx_current_ime])[0].size != 0:
                         if check_FAIMS:
-                            
+
                             if FAIMS_array_ms1[idx_current_ime] == psm_FAIMS:
                                 pass
                             else:
                                 continue 
-                        
-                        if ch_array_ms1[idx_current_ime] == psm_charge:
+
+                        if not check_charge or ch_array_ms1[idx_current_ime] == psm_charge:
                             rtS = rtStart_array_ms1[idx_current_ime]
                             rtE = rtEnd_array_ms1[idx_current_ime]
-                            if  rtS + mean1- interval1 < psm_rt  and  psm_rt > rtE - mean2-interval2:
+                            if  psm_rt  - mean1> rtS- interval1    and  psm_rt + mean2 < rtE +interval2:
                                 ms1_mz = mz_array_ms1[idx_current_ime]
                                 mz_diff_ppm = (ms1_mz - a) / a * 1e6
                                 rt_diff = (rtE - rtS)/2+rtS - psm_rt
                                 rt_diff1 = psm_rt - rtS
                                 rt_diff2 = rtE - psm_rt
                                 intensity = feature_intensityApex[idx_current_ime]
-                            
                                 cur_result = {'idx_current_ime': idx_current_ime,
                                              'mz_diff_ppm':mz_diff_ppm,
                                              'rt_diff':rt_diff,
@@ -548,7 +555,7 @@ def run():
             results_psms = total(df_features = df_features,psms = psms,mass_accuracy_ppm = 100)
 
         if parameters == 'mz_diff_ppm':
-            h = 0.2
+            h = 0.05
             results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2,mass_accuracy_ppm = 100)
 
         if parameters == 'im_diff':
