@@ -490,7 +490,7 @@ def run():
             results_psms = total(df_features = df_features,psms = psms,mass_accuracy_ppm = 100)
 
         if parameters == 'mz_diff_ppm':
-            h = 0.2
+            h = 0.05
             results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2,mass_accuracy_ppm = 100)
 
         if parameters == 'im_diff':
