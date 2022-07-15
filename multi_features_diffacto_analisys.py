@@ -9,14 +9,15 @@ from collections import defaultdict, Counter
 import pyteomics
 import copy
 import os
+import errno
 import time
+import ast
 from os import listdir
 from matplotlib.ticker import PercentFormatter
 from matplotlib_venn import venn3, venn3_circles
 from pyteomics.openms import featurexml
 import venn
 from venn import venn
-    
 from scipy.stats import pearsonr 
 from scipy.optimize import curve_fit
 import logging
@@ -58,20 +59,21 @@ def run():
     parser.add_argument('-cfg', help='path to config .ini file')
     parser.add_argument('-cfg_category', help='name of category to prioritize in the .ini file')
     parser.add_argument('-dif', help='path to Diffacto')
-    parser.add_argument('-scav2dif', help='path to scav2diffacto')
+#    parser.add_argument('-scav2dif', help='path to scav2diffacto')
     parser.add_argument('-s1', nargs='+', help='input files PSMs_full.tsv (and _proteins.tsv should be in the same directory) for S1 sample')
     parser.add_argument('-s2', nargs='+', help='input files PSMs_full.tsv (and _proteins.tsv should be in the same directory) for S2 sample')
     parser.add_argument('-sampleNames', nargs='+', help='short names for samples for inner structure of results')
     parser.add_argument('-mzML', nargs='+', 
                         help='paths to mzML files for samples in the same order in one line S1 the S2...')
+    parser.add_argument('-pept_path', nargs='+', 
+                        help='paths to files with peptides filtered on certain FDR for samples in the same order as in S1, S2...')
+    parser.add_argument('-prot_path', nargs='+', 
+                        help='paths to files with proteins filtered on certain FDR for samples in the same order as in S1, S2...')
     
     parser.add_argument('-dino', help='path to Dinosaur')
     parser.add_argument('-bio', help='path to Biosaur')
     parser.add_argument('-bio2', help='path to Biosaur2')
     parser.add_argument('-openms', help='path to OpenMS feature')
-    
-    parser.add_argument('-s3', nargs='+', help='input files for S3 sample')
-    parser.add_argument('-s4', nargs='+', help='input files for S4 sample')
     
     parser.add_argument('-outdir', help='name of  directory, where results would be stored')
     parser.add_argument('-overwrite_features', help='whether to overwrite existed features files (flag == 1) or use them (flag == 0)')
@@ -80,6 +82,7 @@ def run():
     parser.add_argument('-overwrite_first_diffacto', help='whether to overwrite existed diffacto files (flag == 1) or use them (flag == 0)')
     parser.add_argument('-mixed', help='whether to reanalyze mixed intensities (1) or not (0)')
     parser.add_argument('-venn', help='whether to plot venn diagrams (1) or not (0)')
+    parser.add_argument('-pept_intens', help='max_intens - as intensity for peptide would be taken maximal intens between charge states; summ_intens - as intensity for peptide would be taken sum of intens between charge states; z-attached - each charge state would be treated as independent peptide')
     parser.add_argument('-choice', help='method how to choose right intensities for peptide. 0 - default order and min Nan values, 1 - min Nan and min of summ CV, 2 - min Nan and min of max CV, 3 - default order with filling Nan values between programs (if using this variant -norm MUST be applied)')
     parser.add_argument('-norm', help='normalization method for intensities. Can be 1 - median or 0 - no normalization')
     
@@ -96,13 +99,17 @@ def run():
     numeric_level = getattr(logging, loglevel.upper(), None)
     if not isinstance(numeric_level, int):
         raise ValueError('Invalid log level: %s' % loglevel)
-    logging.basicConfig(format='%(levelname)s: %(asctime)s %(message)s', filename=args['log_path'], filemode='w', encoding='utf-8', level=numeric_level)
+    logging.basicConfig(
+        format='%(asctime)s [%(levelname)s]: %(message)s',
+        level=numeric_level,
+        handlers=[  logging.FileHandler(args['log_path'], mode='w', encoding='utf-8'),
+                    logging.StreamHandler(sys.stdout) ]
+    )
     logging.getLogger('matplotlib').setLevel(logging.ERROR)
     
     def log_subprocess_output(pipe):
         for line in iter(pipe.readline, b''): # b'\n'-separated lines
             logging.info('From subprocess: %r', line)
-            sys.stdout.write(line)
     
     logging.info('Started')
     if args['cfg'] :
@@ -116,7 +123,7 @@ def run():
             if args[key] == None :
                 try :
                     args[key] = config[cat][key]
-                except :   
+                except :
                     if args[key] == None :
                         try :
                             args[key] = config['DEFAULT'][key]
@@ -133,9 +140,9 @@ def run():
         logging.warning('path to diffacto file is required')
         return -1
 
-    if not args['scav2dif'] :
-        logging.warning('path to scav2diffacto.py file is required')
-        return -1
+#     if not args['scav2dif'] :
+#         logging.warning('path to scav2diffacto.py file is required')
+#         return -1
     
     if not args['outdir'] :
         logging.warning('path to output directory is required')
@@ -178,6 +185,58 @@ def run():
         logging.warning('short name for every PSMs file is required')
         return -1
     
+    mzML_dict = {}
+    for sample, mzML in zip(samples, mzML_paths) :
+        mzML_dict[sample] = mzML
+        
+    PSMs_full_dict = {}
+    for sample_num in ['s1', 's2'] :
+        if args[sample_num] :
+            dd = {}
+            num = int(sample_num[-1])
+            for z, sample in zip(args[sample_num].split(), samples[3*(num-1):3+3*(num-1)]) :
+                dd[sample] = z
+        PSMs_full_dict[sample_num] = dd
+    
+    peptides_dict = {}
+    print(args['pept_path'])
+    if args['pept_path'] != '0' :
+        if (len(args['pept_path'].split()) == len(PSMs_full_paths)) :
+            pept_path = args['pept_path'].split()
+            for sample, pept in zip(samples, pept_path) :
+                peptides_dict[sample] = pept
+        else :
+            logging.warning('paths to all peptides files are required')
+            return -1
+    else :
+        pept_path = []
+        for sample, PSM in zip(samples, PSMs_full_paths) :
+            s = PSM.replace('_PSMs_full.tsv', '_peptides.tsv')
+            pept_path.append(s)
+            peptides_dict[sample] = s
+            
+    proteins_dict = {}
+    if args['prot_path'] != '0' :
+        if (len(args['prot_path'].split()) == len(PSMs_full_paths)) :
+            prot_path = args['prot_path'].split()
+            for sample, prot in zip(samples, prot_path) :
+                proteins_dict[sample] = prot
+        else :
+            logging.warning('paths to all proteins files are required')
+            return -1
+    else :
+        prot_path = []
+        for sample, PSM in zip(samples, PSMs_full_paths) :
+            s = PSM.replace('_PSMs_full.tsv', '_proteins.tsv')
+            prot_path.append(s)
+            proteins_dict[sample] = s
+    
+    paths = {'mzML': mzML_dict, 
+             'PSM_full' : PSMs_full_dict,
+             'peptides' : peptides_dict,
+             'proteins' : proteins_dict
+            }
+#    print(paths)
     out_directory = args['outdir']
     sample_1 = args['s1'].split()
     sample_2 = args['s2'].split()
@@ -368,9 +427,9 @@ def run():
         mass_shift, mass_sigma = popt[1], abs(popt[2])
         return mass_shift, mass_sigma, pcov[0][0]
 
-        
 
     def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mean_mz=0, mass_accuracy_ppm=10, mean_im = 0, sigma_im = False, isotopes_array=[0, ]):
+        df_features = df_features.sort_values(by='mz')
         mz_array_ms1 = df_features['mz'].values
         ch_array_ms1 = df_features['charge'].values
         rtStart_array_ms1 = df_features['rtStart'].values
@@ -414,7 +473,7 @@ def run():
             for index, row in psms.iterrows(): 
                 psms_index = row['spectrum']  
                 peptide = row['peptide']
-                psm_mass = row['calc_neutral_pep_mass']
+                psm_mass = row['precursor_neutral_mass']
                 psm_charge = row['assumed_charge']
                 psm_rt = row['RT exp']
                 psm_mz = (psm_mass+psm_charge*1.00697)/psm_charge
@@ -497,7 +556,10 @@ def run():
 
             if 'im' in df_features.columns:
                 im_array_ms1 = df_features['im'].values
-                h = (max(im_array_ms1) - min(im_array_ms1))/15
+                if len(set(im_array_ms1)) != 1:
+                    h = (max(im_array_ms1) - min(im_array_ms1))/15
+                else:
+                    return 0,0
             else:
                 return 0,0
 
@@ -553,15 +615,17 @@ def run():
         return features_for_psm_db,end_isotope_, cnt.keys()
 # end_isotope_, cnt.keys(),
 
+
 ### Сопоставление
-                 
+
+
     a = out_directory + '/feats_matched'
     subprocess.call(['mkdir', '-p', a])
 
 #    suffixes = ['dino', 'bio', 'bio2', 'openMS'] - уже заданы
     logging.info('Start matching features')
     for PSM_path, sample in zip(PSMs_full_paths, samples) :
-        PSM = pd.read_csv(PSM_path, sep = '\t')[['calc_neutral_pep_mass', 'assumed_charge', 'RT exp', 'spectrum', 'peptide','protein']]
+        PSM = pd.read_csv(PSM_path, sep = '\t')[['calc_neutral_pep_mass', 'precursor_neutral_mass', 'q', 'assumed_charge', 'ionmobility', 'RT exp', 'spectrum', 'peptide', 'protein']]
         logging.info('sample %s', sample)
         for suf in suffixes :
             if args['overwrite_matching'] == 1 or not os.path.exists(out_directory + '/feats_matched/' + sample + '_' + suf + '.tsv') :
@@ -571,7 +635,7 @@ def run():
                 logging.info(suf + ' features ' + sample + '\n' + 'START')
                 temp_df = optimized_search_with_isotope_error_(feats, PSM )[0]
 
-                cols = ['calc_neutral_pep_mass','assumed_charge','RT exp','spectrum','peptide','protein','df_features','feature_intensityApex']
+                cols = ['peptide','protein','calc_neutral_pep_mass','assumed_charge','RT exp','spectrum', 'q','df_features','feature_intensityApex']
               
                 median = temp_df['feature_intensityApex'].median()
                 temp_df['med_norm_feature_intensityApex'] = temp_df['feature_intensityApex']/median
@@ -579,113 +643,159 @@ def run():
                 
                 logging.info(suf + ' features ' + sample + ' DONE')
                 temp_df.to_csv(out_directory + '/feats_matched/' + sample + '_' + suf + '.tsv', sep='\t', columns=cols)
-
                 logging.info(sample + ' PSMs matched ' + str(temp_df['feature_intensityApex'].notna().sum()) + '/' 
                              + str(len(temp_df)) + ' ' + str(temp_df['feature_intensityApex'].notna().sum()/len(temp_df)*100) + '%')
                 logging.info(suf + ' MATCHED')
+            
+        temp_df = None
 
+        
+## Подготовка и прогон Диффакто 1
 
-
-## Создание новых PSMs_full_tool.tsv
-
-                                    
-#    suffixes = ['dino', 'bio', 'bio2', 'openMS'] - уже заданы в начале
-    
-    logging.info('Creating new PSMs_full')
-    feature_colomn_name = 'feature_intensityApex'
-    if args['norm'] == 0 :
-        feature_colomn_name = 'feature_intensityApex'
-    elif args['norm'] == 1 :
-        feature_colomn_name = 'med_norm_feature_intensityApex'
-    for PSM_path, sample in zip(PSMs_full_paths, samples) :
-        f = PSM_path.split('/')[-1]
-        l = len(f)
-        old_path = PSM_path[:-l]
-        for suf in suffixes :
-            PSM = pd.read_csv(PSM_path, sep = '\t')
-            feats = out_directory + '/feats_matched/' + sample + '_' + suf + '.tsv'
-            new_f = f.replace('PSMs_full.tsv', 'PSMs_full_' + suf + '.tsv')
-            if args['overwrite_new_PSMs'] == 1 or not os.path.exists(os.path.join(old_path, new_f)) : 
-                feat_df = pd.read_csv(feats , sep='\t')[['peptide', 'protein', feature_colomn_name]].dropna(axis=0, inplace=True, subset=feature_colomn_name)
-                PSM = PSM.merge(feat_df,  how = 'inner', on = ['peptide', 'protein'], suffixes = (None, '^'))
-                PSM.rename(columns={'MS1Intensity' : 'Old_Intensity', feature_colomn_name : 'MS1Intensity'}, inplace=True)
-                PSM['MS1Intensity'] = PSM['MS1Intensity'].fillna(0.0)
-                PSM.to_csv(os.path.join(old_path, new_f), sep = '\t', encoding='utf-8', index=False, columns=list(PSM.columns))
-    logging.info('New PSMs_full created')
-
-
-## Первый прогон Diffacto
-
-
-    # переименование начальных файлов из PSMs_full.tsv в PSMs_full_base.tsv чтобы не менять scav2diffacto.py
-
-    for PSM_path, sample in zip(PSMs_full_paths, samples) :
-        f = PSM_path.split('/')[-1]
-        l = len(f)
-        old_path = PSM_path[:-l]
-        new_f = f.replace('PSMs_full.tsv', 'PSMs_full_base.tsv')
-        os.rename(PSM_path, os.path.join(old_path, new_f))
-
-
-
-    out_path = out_directory + '/diffacto/'
+    out_path = out_directory + '/diffacto/' 
     subprocess.call(['mkdir', '-p', out_path])
 
-    full_suf = suffixes
-    mixed_suf = ['mixed']
-
-    # Построение файлов _proteins.tsv на подачу
-
-    #S1 и S2 - это файлы _proteins.tsv !!!!!!!
-
-    s1 = [x.replace('_PSMs_full.tsv', '_proteins.tsv') for x in sample_1]
-    s2 = [x.replace('_PSMs_full.tsv', '_proteins.tsv') for x in sample_2]
-
-    # Циклично для каждого суффикса (dino, bio2...) переименовывает нужный файл в PSMs_full.tsv, загоняет в Diffacto, 
-    # затем переименовывает файл обратно в PSMs_full_suf.tsv
-    # Для смешанных "лучших" интенсивностей суффикс mixed
-
-    for suf in full_suf :
-        diff_out_name = out_path + args['outDiff'].replace('.txt', '_' + suf + '.txt')
-        diff_sample_name = out_path + args['outSampl'].replace('.txt', '_' + suf + '.txt')
-        diff_peptides_name = out_path + args['outPept'].replace('.txt', '_' + suf + '.txt')
-
-        for PSM_path, sample in zip(PSMs_full_paths, samples) :
-            file_name = PSM_path.split('/')[-1]
-            file_name_with_tool = file_name.replace('PSMs_full.tsv', 'PSMs_full_' + suf + '.tsv')
-            l = len(file_name)
-            path_to_name = PSM_path[:-l]
-            os.rename( path_to_name + file_name_with_tool,  path_to_name + file_name )
+    peptide_df = False
+    allowed_prots = set()
+    allowed_peptides = set()
+    
+    intens_colomn_name = 'feature_intensityApex'
+    if args['norm'] == 1 :
+        intens_colomn_name = 'med_norm_feature_intensityApex'
+    else :
+        intens_colomn_name = 'feature_intensityApex'
+    
+    paths['feats_matched'] = {}
+    for sample in samples :
+        feats_matched_paths = {}
+        for suf in suffixes :
+            s = out_directory + '/feats_matched/' + sample + '_' + suf + '.tsv'
+            if os.path.exists(s):
+                feats_matched_paths[suf] = s
+            else :
+                logging.critical('File not found: %s', s)
+                raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), s)
+        paths['feats_matched'][sample] = feats_matched_paths
+    
+    for sample in samples :
+        logging.debug(paths['proteins'][sample])
+        df0 = pd.read_table(paths['proteins'][sample])
+        allowed_prots.update(df0['dbname'])
         
-        logging.info('Diffacto START')
+    for sample in samples :
+        df0 = pd.read_table(paths['peptides'][sample])
+        allowed_peptides.update(df0['peptide'])
+    
+    logging.debug('allowed proteins total: %d', len(allowed_prots))
+    logging.debug('allowed peptides total: %d', len(allowed_peptides))
+    
+    paths['DiffPept'] = {}
+    paths['DiffSampl'] = {}
+    paths['DiffOut'] = {}
+    for suf in suffixes:
+        peptide_df = False
+        logging.info('Writing peptides files for Diffacto %s', suf)
+        for sample in samples:
+            logging.debug('Starting %s', sample)
+            label = sample                               # имя файла
+            df1 = pd.read_table(paths['feats_matched'][sample][suf], sep='\t')    # df1 - табличка _PSMs_full
+            
+            #df1 = pd.read_table(z.replace('_proteins.tsv', '_PSMs.tsv'))
+            df1 = df1[df1['peptide'].apply(lambda z: z in allowed_peptides)]     # пептиды в ней фильтруются (видимо на достоверность скавагером)
+            # print(df1.shape)
+            # print(z.replace('_proteins.tsv', '_PSMs_full.tsv'))
+            # print(df1.columns)
+
+# приписывает к имени пептида его заряд чтобы создать уникальные пары пептид + заряд
+# всю табличку сорт по убыванию интенсивности, и выкинуть все дубли по пептид + заряд (оставив копию макс интенсивности)
+# из колонки пептида убирается заряд   
+            df1 = df1.sort_values(intens_colomn_name, ascending=False).drop_duplicates(subset=['peptide', 'assumed_charge'])
+            
+            if args['pept_intens'] == 'z-attached' :
+# к последовательности каждого пептида приписывается заряд
+# зарядовые состояния отправляются на анализ диффакто как независимые пептиды
+                df1['peptide'] = df1.apply(lambda z: z['peptide'] + str(z['assumed_charge']), axis=1)
+                df1[intens_colomn_name] = df1.groupby('peptide')[intens_colomn_name].transform(sum)
+                df1 = df1.sort_values('q', ascending=True).drop_duplicates(['peptide'])
+            elif args['pept_intens'] == 'max_intens' :
+# в интенсивность каждого пептида записывается максимум интенсивностей всех зарядовых состояний 
+# оставляется одна копия на пептид (уже пофиг на заряды) с макс q-score (что это)
+                df1[intens_colomn_name] = df1.groupby('peptide')[intens_colomn_name].transform(max)
+                df1 = df1.sort_values('q', ascending=True).drop_duplicates(['peptide'])
+            elif args['pept_intens'] == 'summ_intens' :
+# в интенсивность каждого пептида записывается сумма интенсивностей всех зарядовых состояний 
+# оставляется одна копия на пептид (уже пофиг на заряды) с макс q-score (что это)
+                df1[intens_colomn_name] = df1.groupby('peptide')[intens_colomn_name].transform(sum)
+                df1 = df1.sort_values('q', ascending=True).drop_duplicates(['peptide'])
+            else :
+                logging.critical('Invalid value for setting: -pept_intens %s', args['pept_intens'])
+                raise ValueError('Invalid value for setting: -pept_intens %s', args['pept_intens'])
+
+# в колонку названную по имени файла записываются все интенсивности с нулями вместо Nan
+            df1[label] = df1[intens_colomn_name]
+            df1[label] = df1[label].replace([0, 0.0], np.nan)
+
+# фильтруем табличку так, чтобы остались только те, чей белок присутствует в _proteins.tsv
+            df1['protein'] = df1['protein'].apply(lambda z: ';'.join([u for u in ast.literal_eval(z) if u in allowed_prots]))
+#            logging.debug(list(df1.columns))
+            df1 = df1[df1['protein'].apply(lambda z: z != '')]  
+            
+#            logging.debug(list(df1.columns))
+# обрезает табличку до пептид + белок + значение интенсивности
+            df1 = df1[['peptide', 'protein', label]]
+    
+            logging.debug('Starting merging %s', sample)
+            if peptide_df is False :
+                peptide_df = df1
+            else:
+                peptide_df = peptide_df.reset_index().merge(df1.reset_index(), on='peptide', how='outer')#.set_index('peptide')
+                # peptide_df = peptide_df.merge(df1, on='peptide', how='outer')
+                peptide_df.protein_x.fillna(value=peptide_df.protein_y, inplace=True)
+                peptide_df['protein'] = peptide_df['protein_x']
+                peptide_df = peptide_df.drop(columns=['protein_x', 'protein_y', 'index_x', 'index_y'])
+        logging.debug(peptide_df.columns)
+        peptide_df = peptide_df.set_index('peptide')
+        peptide_df['proteins'] = peptide_df['protein']
+        peptide_df = peptide_df.drop(columns=['protein'])
+        cols = peptide_df.columns.tolist()
+        cols.remove('proteins')
+        cols.insert(0, 'proteins')
+        peptide_df = peptide_df[cols]
+        peptide_df.fillna(value='')
         
-        if args['overwrite_first_diffacto'] == 1 or k == 1 or not os.path.exists(diff_out_name) :    
-            process = subprocess.Popen([args['scav2dif'], '-dif', args['dif'], '-S1', *s1, '-S2', *s2,
-                            '-out', diff_out_name, '-samples', diff_sample_name, '-peptides', diff_peptides_name,
-                            '-norm', args['normDiff'], '-impute_threshold', args['impute_threshold'], 
+        s = out_directory + '/diffacto/' + args['outPept'].replace('.txt', '_' + suf + '.txt')
+        peptide_df.to_csv(s, sep=',')
+        paths['DiffPept'][suf] = s
+        
+        logging.info('Done %s', suf)
+        
+        logging.info('Writing sample files for Diffacto')
+        
+        paths['DiffSampl'][suf] = out_directory + '/diffacto/' + args['outSampl'].replace('.txt', '_' + suf + '.txt')
+        out = open( paths['DiffSampl'][suf] , 'w')
+        for sample_num in ['s1', 's2']:
+            if args[sample_num] :
+                num = int(sample_num[-1])
+                for sample in samples[3*(num-1):3+3*(num-1)] :
+                    label = sample
+                    out.write(label + '\t' + sample_num + '\n')
+                    logging.info(label + '\t' + sample_num)
+        out.close()
+        logging.info('Done')
+        
+        paths['DiffOut'][suf] = out_path + args['outDiff'].replace('.txt', '_' + suf + '.txt')
+
+        logging.info('Diffacto START')        
+        if args['overwrite_first_diffacto'] == 1 or k == 1 or not os.path.exists( paths['DiffOut'][suf] ) :    
+            process = subprocess.Popen(['python3', args['dif'], '-i', paths['DiffPept'][suf],
+                            '-out', paths['DiffOut'][suf], '-samples', paths['DiffSampl'][suf],
+                            '-normalize', args['normDiff'], '-impute_threshold', args['impute_threshold'], 
                             '-min_samples', args['min_samples']], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             with process.stdout:
                 log_subprocess_output(process.stdout)
             exitscore = process.wait()
             logging.debug(exitscore)
-
         logging.info('Diffacto END')
-
-        for PSM_path, sample in zip(PSMs_full_paths, samples) :
-            file_name = PSM_path.split('/')[-1]
-            file_name_with_tool = file_name.replace('PSMs_full.tsv', 'PSMs_full_' + suf + '.tsv')
-            l = len(file_name)
-            path_to_name = PSM_path[:-l]
-            os.rename( path_to_name + file_name, path_to_name + file_name_with_tool)
-
-    # Переименование PSMs_full_base.tsv обратно в PSMs_full.tsv
-
-    for PSM_path, sample in zip(PSMs_full_paths, samples) :
-        file_name = PSM_path.split('/')[-1]
-        file_name_with_tool = file_name.replace('PSMs_full.tsv', 'PSMs_full_' + 'base' + '.tsv')
-        l = len(file_name)
-        path_to_name = PSM_path[:-l]
-        os.rename( path_to_name + file_name_with_tool, path_to_name + file_name)
             
                                     
 ### Анализ 
@@ -698,8 +808,8 @@ def run():
         diff_out[suf] = pd.read_csv(out_directory + '/diffacto/' + 'diffacto_out_' + suf + '.txt', sep = '\t')
 
     for suf in full_suf :
-        diff_out[suf]['log2_FC'] = np.log2(diff_out[suf]['S1']/diff_out[suf]['S2'])
-        diff_out[suf]['FC'] = diff_out[suf]['S1']/diff_out[suf]['S2']
+        diff_out[suf]['log2_FC'] = np.log2(diff_out[suf]['s1']/diff_out[suf]['s2'])
+        diff_out[suf]['FC'] = diff_out[suf]['s1']/diff_out[suf]['s2']
 
     d = {}
     for suf in full_suf :
@@ -751,19 +861,41 @@ def run():
         feature_colomn_name = 'med_norm_feature_intensityApex'
         
     for sample in samples :
-        aggr_df = pd.read_csv( out_directory + '/feats_matched/' + sample + '_dino.tsv', sep='\t', usecols=['peptide', 'protein'])
+        aggr_df = pd.read_csv( paths['feats_matched'][sample]['dino'], sep='\t', usecols=['peptide', 'protein', 'assumed_charge'])
+        if args['pept_intens'] == 'z-attached' :
+            aggr_df['peptide'] = aggr_df.apply(lambda z: z['peptide'] + str(z['assumed_charge']), axis=1)
+            aggr_df.drop(columns=['assumed_charge'], inplace=True)
         aggr_df.drop_duplicates(keep='first', inplace = True)
-        for suf in suffixes :   
-            feats = out_directory + '/feats_matched/' + sample + '_' + suf + '.tsv'
+        for suf in suffixes :
+            label = sample + short_suffixes[suf]
+            feats = paths['feats_matched'][sample][suf]
             temp_df = pd.read_csv(feats , sep='\t')
-            temp_df = temp_df[['peptide', 'protein', feature_colomn_name]]
+            temp_df = temp_df[['peptide', 'protein', 'assumed_charge', 'q', feature_colomn_name]]
             temp_df[feature_colomn_name] = temp_df[feature_colomn_name].fillna(0.0)
             temp_df.sort_values(feature_colomn_name, ascending=False, inplace=True)
-            temp_df.drop_duplicates(subset='peptide', keep='first', inplace=True)
-            temp_df.rename(columns={feature_colomn_name: sample + short_suffixes[suf]}, inplace = True)
+            temp_df.drop_duplicates(subset=['peptide', 'assumed_charge'], keep='first', inplace=True)
+
+            if args['pept_intens'] == 'z-attached' :
+                temp_df['peptide'] = temp_df.apply(lambda z: z['peptide'] + str(z['assumed_charge']), axis=1)
+                temp_df[intens_colomn_name] = temp_df.groupby('peptide')[intens_colomn_name].transform(sum)
+                temp_df = temp_df.sort_values('q', ascending=True).drop_duplicates(['peptide'])
+            elif args['pept_intens'] == 'max_intens' :
+                temp_df[intens_colomn_name] = temp_df.groupby('peptide')[intens_colomn_name].transform(max)
+                temp_df = temp_df.sort_values('q', ascending=True).drop_duplicates(['peptide'])
+            elif args['pept_intens'] == 'summ_intens' :
+                temp_df[intens_colomn_name] = temp_df.groupby('peptide')[intens_colomn_name].transform(sum)
+                temp_df = temp_df.sort_values('q', ascending=True).drop_duplicates(['peptide'])
+            else :
+                logging.critical('Invalid value for setting: -pept_intens %s', args['pept_intens'])
+                raise ValueError('Invalid value for setting: -pept_intens %s', args['pept_intens'])
+                
+            temp_df = temp_df[['peptide', 'protein', intens_colomn_name]]
+            temp_df.rename(columns={feature_colomn_name: label}, inplace = True)
             aggr_df = aggr_df.merge(temp_df,  how = 'outer', on = ['peptide', 'protein'], suffixes = (None, '^'))
+            
             logging.debug('peptide aggregating ' + sample + ' ' + suf + ' done' )
     #    aggr_df.drop_duplicates(keep='first', inplace = True)
+#        aggr_df.drop(columns=['assumed_charge'], inplace=True)
         aggr_df.to_csv( out_directory + '/diffacto/aggr_intens' + sample + '.tsv', sep='\t', 
                        index = list(aggr_df.index), columns = list(aggr_df.columns), encoding = 'utf-8')
         aggr_df = False
@@ -841,12 +973,17 @@ def run():
 #        masked_CV_cols.append('NaN_border')
 #        merge_df.drop(columns=masked_CV_cols, inplace=True)
         
-    merge_df.to_csv(out_directory + '/diffacto/aggr_intens_all.tsv', sep='\t', index = list(merge_df.index), columns = list(merge_df.columns), encoding = 'utf-8')  
+    merge_df.to_csv(out_directory + '/diffacto/aggr_intens_all.tsv', sep='\t', index = list(merge_df.index), columns = list(merge_df.columns), encoding = 'utf-8')
+    
+    if loglevel != 'DEBUG' :
+        for sample in samples :
+            if os.path.exists(out_directory + '/diffacto/aggr_intens' + sample + '.tsv') :
+                os.remove(out_directory + '/diffacto/aggr_intens' + sample + '.tsv')
+                logging.info('Temporary file for peptide aggregating %s is removed', sample)
     logging.info('Choosing intensities DONE')
 
 
 ## Второй прогон диффакто
-
 
     if k >= 2 and args['mixed'] == 1 :
         a = out_directory + '/diffacto/mixed_intensity/' 
@@ -884,92 +1021,119 @@ def run():
             mixed_intens_df['Intensity'] = pd.Series(data = Intensity, index = mixed_intens_df.index).fillna(0.0)
             mixed_intens_df.to_csv(out_directory + '/diffacto/mixed_intensity/' + sample + '.tsv', sep='\t', 
                                    index = list(mixed_intens_df.index), columns = list(mixed_intens_df.columns), encoding = 'utf-8')
+        
+        
         logging.info('Creating new mixed_intensity files DONE')
-                                    
-# Создает новые PSMs_full_mixed.tsv
-# Читает PSMs_full_base.tsv и mixed_intensity, заменяет колонку MS1Intensity на интенсивности из mixed
 
         suf = 'mixed'
-        for PSM_path, sample in zip(PSMs_full_paths, samples) :
-            f = PSM_path.split('/')[-1]
-            l = len(f)
-            old_path = PSM_path[:-l]
-            psm_df = pd.read_csv( os.path.join(old_path, f), sep='\t' )
-
-            intens = out_directory + '/diffacto/mixed_intensity/' + sample + '.tsv'
-            intens_df = pd.read_csv(intens , sep='\t')[['peptide', 'protein', 'Intensity']]
-            #print(intens_df[:1])
-            psm_df = psm_df.merge(intens_df,  how = 'inner', on = ['peptide', 'protein'], suffixes = (None, '^'))
-            #print(list(psm_df.columns))
-            psm_df.rename(columns={'MS1Intensity' : 'Old_Intensity', 'Intensity' : 'MS1Intensity'}, inplace=True)
-
-            new_f = f.replace('PSMs_full.tsv', 'PSMs_full_' + suf + '.tsv' )
-            psm_df.to_csv(old_path + new_f, sep = '\t', encoding='utf-8')
-        logging.info('Creating new PSMs_full DONE')
-
-# Собственно прогон Diffacto на новых PSM файлах
-# кусок скопипастен сверху, просто заменил суффикс
-
-        out_path = out_directory + '/diffacto/'
-        mixed_suf = ['mixed']
-
-        # Построение файлов c белками!!! _proteins.tsv
-
-        s1 = [x.replace('_PSMs_full.tsv', '_proteins.tsv') for x in sample_1]
-        s2 = [x.replace('_PSMs_full.tsv', '_proteins.tsv') for x in sample_2]
-
-        # экранирование начальных PSMs_full в PSMs_full_base.tsv
-        for PSM_path, sample in zip(PSMs_full_paths, samples) :
-            file_name = PSM_path.split('/')[-1]
-            file_name_with_tool = file_name.replace('PSMs_full.tsv', 'PSMs_full_' + 'base' + '.tsv')
-            l = len(file_name)
-            path_to_name = PSM_path[:-l]
-            os.rename( path_to_name + file_name, path_to_name + file_name_with_tool)
+        for sample in samples :
+            s = out_directory + '/diffacto/mixed_intensity/' + sample + '.tsv'
+            if os.path.exists(s):
+                paths['feats_matched'][sample][suf] = s
+            else :
+                logging.critical('File not found: %s', s)
+                raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), s)
         
-        # Циклично для каждого суффикса (dino, bio2...) переименовывает нужный файл в PSMs_full.tsv, загоняет в Diffacto, 
-        # затем переименовывает файл обратно в PSMs_full_suf.tsv
-
-        # Для только OpenMS заменить full_suf на new_suf
-        # Для смешанных интенсивностей суффикс mixed
+        if args['pept_intens'] == 'z-attached' :
+            allowed_peptides = set()
+            for sample in samples :
+                df0 = pd.read_table(paths['peptides'][sample])
+                df0['peptide'] = df0.apply(lambda z: z['peptide'] + str(z['assumed_charge']), axis=1)
+                allowed_peptides.update(df0['peptide'])
         
-        for suf in mixed_suf :
-            diff_out_name = out_path + args['outDiff'].replace('.txt', '_' + suf + '.txt')
-            diff_sample_name = out_path + args['outSampl'].replace('.txt', '_' + suf + '.txt')
-            diff_peptides_name = out_path + args['outPept'].replace('.txt', '_' + suf + '.txt')
-
-            for PSM_path, sample in zip(PSMs_full_paths, samples) :
-                file_name = PSM_path.split('/')[-1]
-                file_name_with_tool = file_name.replace('PSMs_full.tsv', 'PSMs_full_' + suf + '.tsv')
-                l = len(file_name)
-                path_to_name = PSM_path[:-l]
-                os.rename( path_to_name + file_name_with_tool,  path_to_name + file_name )
-                
+        intens_colomn_name = 'Intensity'
+        peptide_df = False
+        logging.info('Writing peptides files for Diffacto %s', suf)
+        for sample in samples:
+            logging.debug('Starting %s', sample)
+            label = sample                               # имя файла
+            df1 = pd.read_table(paths['feats_matched'][sample][suf], sep='\t')    # df1 - табличка _PSMs_full
             
-            process = subprocess.Popen([args['scav2dif'], '-dif', args['dif'], '-S1', *s1, '-S2', *s2,
-                        '-out', diff_out_name, '-samples', diff_sample_name, '-peptides', diff_peptides_name,
-                        '-norm', args['normDiff'], '-impute_threshold', args['impute_threshold'], 
-                        '-min_samples', args['min_samples']], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            with process.stdout:
-                log_subprocess_output(process.stdout)
-            exitscore = process.wait()
-            logging.debug(exitscore)
-               
+            #df1 = pd.read_table(z.replace('_proteins.tsv', '_PSMs.tsv'))
+            df1 = df1[df1['peptide'].apply(lambda z: z in allowed_peptides)]     # пептиды в ней фильтруются (видимо на достоверность скавагером)
+            # print(df1.shape)
+            # print(z.replace('_proteins.tsv', '_PSMs_full.tsv'))
+            # print(df1.columns)
 
-            for PSM_path, sample in zip(PSMs_full_paths, samples) :
-                file_name = PSM_path.split('/')[-1]
-                file_name_with_tool = file_name.replace('PSMs_full.tsv', 'PSMs_full_' + suf + '.tsv')
-                l = len(file_name)
-                path_to_name = PSM_path[:-l]
-                os.rename( path_to_name + file_name, path_to_name + file_name_with_tool)
+# приписывает к имени пептида его заряд чтобы создать уникальные пары пептид + заряд
+# всю табличку сорт по убыванию интенсивности, и выкинуть все дубли по пептид + заряд (оставив копию макс интенсивности)
+# из колонки пептида убирается заряд   
+# выполняется на этапе агрегирования пептидов
+#            df1 = df1.sort_values(intens_colomn_name, ascending=False).drop_duplicates(subset=['peptide', 'assumed_charge'])
             
-        # Переименование PSMs_full_base.tsv обратно в PSMs_full.tsv
+# в интенсивность каждого пептида записывается сумма интенсивностей всех зарядовых состояний 
+# оставляется одна копия на пептид (уже пофиг на заряды) с макс q-score (что это)
+# выполняется на этапе агрегирования пептидов
+#            df1[intens_colomn_name] = df1.groupby('peptide')[intens_colomn_name].transform(sum)
+#            df1 = df1.sort_values('q', ascending=True).drop_duplicates(['peptide'])
+
+# в колонку названную по имени файла записываются все интенсивности с нулями вместо Nan
+            df1[label] = df1[intens_colomn_name]
+            df1[label] = df1[label].replace([0, 0.0], np.nan)
+
+# фильтруем табличку так, чтобы остались только те, чей белок присутствует в _proteins.tsv
+            df1['protein'] = df1['protein'].apply(lambda z: ';'.join([u for u in ast.literal_eval(z) if u in allowed_prots]))
+            df1 = df1[df1['protein'].apply(lambda z: z != '')]  
+            
+            df1 = df1[['peptide', 'protein', label]]
     
-        for PSM_path, sample in zip(PSMs_full_paths, samples) :
-            file_name = PSM_path.split('/')[-1]
-            file_name_with_tool = file_name.replace('PSMs_full.tsv', 'PSMs_full_' + 'base' + '.tsv')
-            l = len(file_name)
-            path_to_name = PSM_path[:-l]
-            os.rename( path_to_name + file_name_with_tool, path_to_name + file_name)
+            logging.debug('Starting merging %s', sample)
+            if peptide_df is False :
+                peptide_df = df1
+            else:
+                peptide_df = peptide_df.reset_index().merge(df1.reset_index(), on='peptide', how='outer')#.set_index('peptide')
+                # peptide_df = peptide_df.merge(df1, on='peptide', how='outer')
+                peptide_df.protein_x.fillna(value=peptide_df.protein_y, inplace=True)
+                peptide_df['protein'] = peptide_df['protein_x']
+                peptide_df = peptide_df.drop(columns=['protein_x', 'protein_y', 'index_x', 'index_y'])
+        
+        logging.debug(peptide_df.columns)
+        peptide_df = peptide_df.set_index('peptide')
+        peptide_df['proteins'] = peptide_df['protein']
+        peptide_df = peptide_df.drop(columns=['protein'])
+        cols = peptide_df.columns.tolist()
+        cols.remove('proteins')
+        cols.insert(0, 'proteins')
+        peptide_df = peptide_df[cols]
+        peptide_df.fillna(value='')
+    
+        s = out_directory + '/diffacto/' + args['outPept'].replace('.txt', '_' + suf + '.txt')
+        peptide_df.to_csv(s, sep=',')
+        paths['DiffPept'][suf] = s
+        logging.info('Peptides files for Diffacto %s created', suf)
+        
+        logging.info('Writing sample files for Diffacto')
+        
+        paths['DiffSampl'][suf] = out_directory + '/diffacto/' + args['outSampl'].replace('.txt', '_' + suf + '.txt')
+        out = open( paths['DiffSampl'][suf] , 'w')
+        for sample_num in ['s1', 's2']:
+            if args[sample_num] :
+                num = int(sample_num[-1])
+                for sample in samples[3*(num-1):3+3*(num-1)] :
+                    label = sample
+                    out.write(label + '\t' + sample_num + '\n')
+                    logging.info(label + '\t' + sample_num)
+        out.close()
+        logging.info('Done')
+        
+        paths['DiffOut'][suf] = out_path + args['outDiff'].replace('.txt', '_' + suf + '.txt')
+    
+        logging.info('Diffacto START')        
+        
+        logging.debug(['python3', args['dif'], '-i', paths['DiffPept'][suf],
+                            '-out', paths['DiffOut'][suf], '-samples', paths['DiffSampl'][suf],
+                            '-normalize', args['normDiff'], '-impute_threshold', args['impute_threshold'], 
+                            '-min_samples', args['min_samples']])
+            
+        process = subprocess.Popen(['python3', args['dif'], '-i', paths['DiffPept'][suf],
+                        '-out', paths['DiffOut'][suf], '-samples', paths['DiffSampl'][suf],
+                        '-normalize', args['normDiff'], '-impute_threshold', args['impute_threshold'], 
+                        '-min_samples', args['min_samples']], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        with process.stdout:
+            log_subprocess_output(process.stdout)
+        exitscore = process.wait()
+        logging.debug(exitscore)
+        logging.info('Diffacto END')
         logging.info('Second Diffacto run DONE')
         
         
@@ -980,12 +1144,13 @@ def run():
 
         diff_out = {}
         for suf in full_suf :
-            logging.info(out_directory + '/diffacto/' + 'diffacto_out_' + suf + '.txt')
+            s = out_directory + '/diffacto/' + 'diffacto_out_' + suf + '.txt'
+            logging.info('Reading for analysis %s', s)
             diff_out[suf] = pd.read_csv(out_directory + '/diffacto/' + 'diffacto_out_' + suf + '.txt', sep = '\t')
 
         for suf in full_suf :
-            diff_out[suf]['log2_FC'] = np.log2(diff_out[suf]['S1']/diff_out[suf]['S2'])
-            diff_out[suf]['FC'] = diff_out[suf]['S1']/diff_out[suf]['S2']
+            diff_out[suf]['log2_FC'] = np.log2(diff_out[suf]['s1']/diff_out[suf]['s2'])
+            diff_out[suf]['FC'] = diff_out[suf]['s1']/diff_out[suf]['s2']
 
         d = {}
         for suf in full_suf :
@@ -1011,16 +1176,12 @@ def run():
         
         '''
         print('For ALL proteins mean squared error:')
-
         for suf in full_suf :
             print(suf + ' log2 fold change mean squared error =', round((1/np.sqrt(l))*np.sqrt(((comp_df['log2_FC_'+suf] - 1)**2).sum()), 3))
         print('\n')
-
         t = comp_df.dropna(axis=0, how='any')
         l = len(t)
-
         print('For COMMON proteins mean squared error:')
-
         for suf in full_suf :
             print(suf + ' log2 fold change mean squared error =', round((1/np.sqrt(l))*np.sqrt(((t['log2_FC_'+suf] - 1)**2).sum()), 3))
         print('\n')
