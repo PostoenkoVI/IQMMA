@@ -231,9 +231,19 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
 
     return results
 
+def dist(value) :
+    if value['rt1'] > 0 :
+        rt1 = 0
+    else :
+        rt1 = value['rt1']
+    if value['rt2'] > 0 :
+        rt2 = 0
+    else :
+        rt2 = value['rt2']
+    return np.sqrt(value['mz_diff_ppm']**2 + rt1**2 + rt2**2)
 
 def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,sigma1=False,mean2=0,sigma2=False, mean_mz = 0, sigma_mz = False):
-
+# sort ='mz_diff_ppm'
     rtStart_array_ms1 = df_features['rtStart'].values
     rtEnd_array_ms1 = df_features['rtEnd'].values
 
@@ -254,11 +264,14 @@ def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,
                 return 0,0
         else:
             return 0,0
-
+    
     ar = []
     for value in results_psms.values():
         if sort == 'intensity':
             ar.append(sorted(value, key=lambda x: -abs(x[sort]))[0][parameters])
+        elif sort == 'dist':
+            # lambda x: np.sqrt(x['mz_diff_ppm']**2 + x['rt1']**2 + x['rt2']**2 
+            ar.append(sorted(value, key=dist)[0][parameters])
         else:
             ar.append(sorted(value, key=lambda x: abs(x[sort]))[0][parameters])
 
@@ -267,6 +280,12 @@ def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,
 
 
 def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_rt1=False,mean_rt2=False,sigma_rt2=False,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2]):
+    
+    idx = {}
+    l = len(isotopes_array)
+    for i, j in zip(isotopes_array, range(0, l, 1)) :
+        idx[i] = j
+    
     if mean_rt1 == False and sigma_rt1 == False:
         logging.debug('rt1')
         mean_rt1, sigma_rt1 = found_mean_sigma(df_features,psms, 'rt1')
@@ -286,7 +305,8 @@ def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_r
     # print(mean_rt1, sigma_rt1,mean_rt2, sigma_rt2,mean_mz, sigma_mz )    
 
     results_isotope = total(df_features = df_features,psms =psms,mean1 = mean_rt1, sigma1 = sigma_rt1,mean2 = mean_rt2, sigma2 = sigma_rt2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, isotopes_array=[0,1,-1,2,-2])
-    results_isotope_end = [] 
+    
+    results_isotope_end = []
     cnt = Counter([z[0]['i'] for z in results_isotope.values()])
     for i in cnt.values():
         results_isotope_end.append(i/len(psms))
@@ -294,8 +314,11 @@ def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_r
     df_features_dict = {}
     intensity_dict = {}
     for kk,v in results_isotope.items():
-        df_features_dict[kk] = v[0]['idx_current_ime']
-        intensity_dict[kk] = v[0]['intensity']
+        # df_features_dict[kk] = v[0]['idx_current_ime']
+        # intensity_dict[kk] = v[0]['intensity']
+        tmp = sorted(v, key=lambda x: 1e6*idx[x['i']] + np.sqrt( (abs(x['mz_diff_ppm']-mean_mz)/sigma_mz/3)**2 + (x['rt1']/sigma_rt1)**2 + (x['rt2']/sigma_rt2)**2 ))[0]
+        df_features_dict[kk] = tmp['idx_current_ime']
+        intensity_dict[kk] = tmp['intensity']
     ser1 = pd.DataFrame(df_features_dict.values(),index =range(0, len(df_features_dict),1), columns = ['df_features'])
     ser2 = pd.DataFrame(df_features_dict.keys(),index =range(0, len(df_features_dict),1), columns = ['spectrum'])
     ser3 = pd.DataFrame(intensity_dict.values(),index =range(0, len(intensity_dict),1), columns = ['feature_intensityApex'])
@@ -1080,7 +1103,9 @@ def run():
             merge_df[ 'summ_cv'+short_suffixes[suf] ] = merge_df['s1_cv'+short_suffixes[suf]] + merge_df['s2_cv'+short_suffixes[suf]]
             merge_df[ 'max_cv'+short_suffixes[suf] ] = merge_df.loc[:, ['s1_cv'+short_suffixes[suf], 's2_cv'+short_suffixes[suf]] ].max(axis=1)
             merge_df.drop(columns=[ 's1_mean'+short_suffixes[suf], 's2_mean'+short_suffixes[suf], 
-                                    's1_std'+short_suffixes[suf], 's2_std'+short_suffixes[suf] ], inplace=True)
+                                    's1_std'+short_suffixes[suf], 's2_std'+short_suffixes[suf], 
+                                    's1_'+'not_NaN' + short_suffixes[suf], 's2_'+'not_NaN' + short_suffixes[suf], 
+                                  ], inplace=True)
 
         very_short_suf_dict = {'dino': 'D', 'bio': 'B', 'bio2': 'B2', 'openMS': 'O'}
         very_short_suf = [very_short_suf_dict[suf] for suf in suffixes]
