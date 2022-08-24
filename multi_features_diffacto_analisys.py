@@ -18,14 +18,10 @@ from matplotlib_venn import venn3, venn3_circles
 from pyteomics.openms import featurexml
 import venn
 from venn import venn
-from scipy.stats import pearsonr 
+from scipy.stats import pearsonr,  scoreatpercentile, percentileofscore
 from scipy.optimize import curve_fit
 import logging
-
-
-## Функции для сопоставления
-
-    
+ 
 def noisygaus(x, a, x0, sigma, b):
     return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2)) + b
 
@@ -77,7 +73,7 @@ def opt_bin(ar, border=16) :
     return bwidth
 
 
-def calibrate_mass(mass_left, mass_right, true_md):
+def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False):
 
     bwidth = opt_bin(true_md)
     bbins = np.arange(mass_left, mass_right, bwidth)
@@ -110,8 +106,17 @@ def calibrate_mass(mass_left, mass_right, true_md):
     s = (max(t) - min(t))/6
     noise = min(H2)
     popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
-
+    logging.debug(popt)
     mass_shift, mass_sigma = popt[1], abs(popt[2])
+
+    if check_gauss:
+        logging.debug('GAUSS FIT, %f, %f' % (percentileofscore(t, mass_shift - 3 * mass_sigma), percentileofscore(t, mass_shift + 3 * mass_sigma)))
+
+        if percentileofscore(t, mass_shift - 3 * mass_sigma) + 100 - percentileofscore(t, mass_shift + 3 * mass_sigma) > 10:
+            mass_sigma = scoreatpercentile(np.abs(t-mass_shift), 95) / 2
+    
+
+
     logging.debug('shift: ' + str(mass_shift) + '\t' + 'sigma: ' + str(mass_sigma))
     return mass_shift, mass_sigma, pcov[0][0]
 
@@ -186,7 +191,7 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
                     check_FAIMS = False
                     logging.info('there is no column "FAIMS" in the PSMs')
             if psms_index not in results:
-                a = psm_mz*(1 + mean_mz*1e-6) -  i*1.003354/psm_charge 
+                a = psm_mz/(1 - mean_mz*1e-6) -  i*1.003354/psm_charge 
                 mass_accuracy = mass_accuracy_ppm*1e-6*a
                 idx_l_psms1_ime = mz_array_ms1.searchsorted(a - mass_accuracy)
                 idx_r_psms1_ime = mz_array_ms1.searchsorted(a + mass_accuracy, side='right')
@@ -203,7 +208,9 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
                     if not check_charge or ch_array_ms1[idx_current_ime] == psm_charge:
                         rtS = rtStart_array_ms1[idx_current_ime]
                         rtE = rtEnd_array_ms1[idx_current_ime]
-                        if  psm_rt  - mean1> rtS- interval1    and  psm_rt + mean2 < rtE +interval2:
+                        rt1 = psm_rt - rtS
+                        rt2 = rtE - psm_rt
+                        if rt1 >= min(0, mean1 - interval1) and rt2 >= min(0, mean2 - interval2):
                             ms1_mz = mz_array_ms1[idx_current_ime]
                             mz_diff_ppm = (ms1_mz - a) / a * 1e6
                             rt_diff = (rtE - rtS)/2+rtS - psm_rt
@@ -244,6 +251,7 @@ def dist(value) :
 
 def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,sigma1=False,mean2=0,sigma2=False, mean_mz = 0, sigma_mz = False):
 # sort ='mz_diff_ppm'
+    check_gauss = False
     rtStart_array_ms1 = df_features['rtStart'].values
     rtEnd_array_ms1 = df_features['rtEnd'].values
 
@@ -251,6 +259,7 @@ def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,
         results_psms = total(df_features = df_features,psms = psms,mass_accuracy_ppm = 100)
 
     if parameters == 'mz_diff_ppm' :
+        check_gauss = True
         results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2,mass_accuracy_ppm = 100)
 
     if parameters == 'im_diff':
@@ -275,58 +284,58 @@ def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,
         else:
             ar.append(sorted(value, key=lambda x: abs(x[sort]))[0][parameters])
 
-    mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar)
+    mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss)
     return mean, sigma
 
 
 def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_rt1=False,mean_rt2=False,sigma_rt2=False,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2]):
     
+
     idx = {}
-    l = len(isotopes_array)
-    for i, j in zip(isotopes_array, range(0, l, 1)) :
+    for j, i in enumerate(isotopes_array):
         idx[i] = j
-    
-    if mean_rt1 == False and sigma_rt1 == False:
+
+    if mean_rt1 is False and sigma_rt1 is False:
         logging.debug('rt1')
         mean_rt1, sigma_rt1 = found_mean_sigma(df_features,psms, 'rt1')
 
-    if mean_rt2 == False and sigma_rt2 == False:
+    if mean_rt2 is False and sigma_rt2 is False:
         logging.debug('rt2')
         mean_rt2, sigma_rt2 = found_mean_sigma(df_features,psms, 'rt2')
 
-    if mean_mz == False and sigma_mz == False:
+    if mean_mz is False and sigma_mz is False:
         logging.debug('mz')
         mean_mz, sigma_mz = found_mean_sigma(df_features,psms,'mz_diff_ppm', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2)   
 
-    if mean_im == False and sigma_im == False:
+    if mean_im is False and sigma_im is False:
         logging.debug('im')
         mean_im, sigma_im = found_mean_sigma(df_features,psms,'im_diff', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2, mean_mz = mean_mz, sigma_mz= sigma_mz)  
 
-    # print(mean_rt1, sigma_rt1,mean_rt2, sigma_rt2,mean_mz, sigma_mz )    
-
     results_isotope = total(df_features = df_features,psms =psms,mean1 = mean_rt1, sigma1 = sigma_rt1,mean2 = mean_rt2, sigma2 = sigma_rt2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, isotopes_array=[0,1,-1,2,-2])
-    
+
+
+
+
     results_isotope_end = []
     cnt = Counter([z[0]['i'] for z in results_isotope.values()])
     for i in cnt.values():
         results_isotope_end.append(i/len(psms))
     end_isotope_ = list(np.add.accumulate(np.array(results_isotope_end))*100)
+    logging.info(end_isotope_)
     df_features_dict = {}
     intensity_dict = {}
+
     for kk,v in results_isotope.items():
-        # df_features_dict[kk] = v[0]['idx_current_ime']
-        # intensity_dict[kk] = v[0]['intensity']
-        tmp = sorted(v, key=lambda x: 1e6*idx[x['i']] + np.sqrt( (abs(x['mz_diff_ppm']-mean_mz)/sigma_mz/3)**2 + (x['rt1']/sigma_rt1)**2 + (x['rt2']/sigma_rt2)**2 ))[0]
+        tmp = sorted(v, key=lambda x: 1e6*idx[x['i']] + np.sqrt( ((x['mz_diff_ppm'])/sigma_mz)**2 + (min(0, x['rt1']/sigma_rt1, x['rt2']/sigma_rt2))**2))[0]
         df_features_dict[kk] = tmp['idx_current_ime']
         intensity_dict[kk] = tmp['intensity']
-    ser1 = pd.DataFrame(df_features_dict.values(),index =range(0, len(df_features_dict),1), columns = ['df_features'])
-    ser2 = pd.DataFrame(df_features_dict.keys(),index =range(0, len(df_features_dict),1), columns = ['spectrum'])
-    ser3 = pd.DataFrame(intensity_dict.values(),index =range(0, len(intensity_dict),1), columns = ['feature_intensityApex'])
+    ser1 = pd.DataFrame(df_features_dict.values(), index = df_features_dict.keys(), columns = ['df_features'])
+    ser2 = pd.DataFrame(df_features_dict.keys(), index = df_features_dict.keys(), columns = ['spectrum'])
+    ser3 = pd.DataFrame(intensity_dict.values(), index = intensity_dict.keys(), columns = ['feature_intensityApex'])
     s = pd.concat([ser1,ser2],sort = False,axis = 1 )
     ss = pd.concat([s,ser3],sort = False,axis = 1 )
     features_for_psm_db = pd.merge(psms,ss,on = 'spectrum',how='outer')
     return features_for_psm_db,end_isotope_, cnt.keys()
-# end_isotope_, cnt.keys(),
 
 
 def run():
@@ -371,7 +380,7 @@ def run():
     parser.add_argument('-s2', nargs='+', help='input mzML files for sample 2 (also file names are the keys for searching other needed files)')
 #    parser.add_argument('-sampleNames', nargs='+', help='short names for samples for inner structure of results')
     parser.add_argument('-PSM_folder', help='path to the folder with PSMs files')
-    parser.add_argument('-PSM_format', help='format of the PSMs files (may be tsv, pepXML, mzid)')
+    parser.add_argument('-PSM_format', help='format of the PSMs files (may be tsv, pepXML, mzid)', default='tsv')
     parser.add_argument('-pept_folder', help='path to folder with files with peptides filtered on certain FDR (default: searching for them near PSMs)')
     parser.add_argument('-prot_folder', help='path to folder with files with proteins filtered on certain FDR (default: searching for them near PSMs)')
     
@@ -385,14 +394,14 @@ def run():
     parser.add_argument('-matching_folder', help='directory to store matched psm-feature pairs')
     parser.add_argument('-diffacto_folder', help='directory to store diffacto results')
     
-    parser.add_argument('-overwrite_features', help='whether to overwrite existed features files (flag == 1) or use them (flag == 0)')
-    parser.add_argument('-overwrite_matching', help='whether to overwrite existed matched files (flag == 1) or use them (flag == 0)')
-    parser.add_argument('-overwrite_first_diffacto', help='whether to overwrite existed diffacto files (flag == 1) or use them (flag == 0)')
+    parser.add_argument('-overwrite_features', help='whether to overwrite existed features files (flag == 1) or use them (flag == 0)', default=0)
+    parser.add_argument('-overwrite_matching', help='whether to overwrite existed matched files (flag == 1) or use them (flag == 0)', default=1)
+    parser.add_argument('-overwrite_first_diffacto', help='whether to overwrite existed diffacto files (flag == 1) or use them (flag == 0)', default=1)
     parser.add_argument('-mixed', help='whether to reanalyze mixed intensities (1) or not (0)')
     parser.add_argument('-venn', help='whether to plot venn diagrams (1) or not (0)')
-    parser.add_argument('-pept_intens', help='max_intens - as intensity for peptide would be taken maximal intens between charge states; summ_intens - as intensity for peptide would be taken sum of intens between charge states; z-attached - each charge state would be treated as independent peptide')
+    parser.add_argument('-pept_intens', help='max_intens - as intensity for peptide would be taken maximal intens between charge states; summ_intens - as intensity for peptide would be taken sum of intens between charge states; z-attached - each charge state would be treated as independent peptide', default='summ_intens')
     parser.add_argument('-choice', help='method how to choose right intensities for peptide. 0 - default order and min Nan values, 1 - min Nan and min of summ CV, 2 - min Nan and min of max CV, 3 - default order with filling Nan values between programs (if using this variant -norm MUST be applied)')
-    parser.add_argument('-norm', help='normalization method for intensities. Can be 1 - median or 0 - no normalization')
+    parser.add_argument('-norm', help='normalization method for intensities. Can be 1 - median or 0 - no normalization', default=0)
     
     parser.add_argument('-outPept', help='name of output diffacto peptides file (important: .txt)', default='peptides.txt')
     parser.add_argument('-outSampl', help='name of output diffacto samples file (important: .txt)', default='sample.txt')
@@ -447,7 +456,11 @@ def run():
                 finally :
                     pass
     logging.debug(args)
-#    print(args['s1'].split())
+
+    if 's1' in args['s1'] and type(args['s1']) == str:
+        args['s1'] = args['s1'].split()
+    if 's2' in args['s2'] and type(args['s2']) == str:
+        args['s2'] = args['s2'].split()
 
     if not args['dif'] :
         logging.critical('path to diffacto file is required')
@@ -493,7 +506,8 @@ def run():
     for sample_num in ['s1', 's2']:
         if args[sample_num] :
             samples_dict[sample_num] = []
-            for z in args[sample_num].split():
+            for z in args[sample_num]:
+            # for z in args[sample_num].split():
                 mzML_paths.append(z)
                 samples.append(z.split('/')[-1].replace('.mzML', ''))
                 samples_dict[sample_num].append(z.split('/')[-1].replace('.mzML', ''))
@@ -519,12 +533,12 @@ def run():
                     return -1
     else :
         logging.warning('trying to find *_%s files in the same directory as .mzML', PSMs_suf)
-        dir_name = mzML_paths[0].split(sample[0])[0]
+        dir_name = os.path.abspath(mzML_paths[0]).split(samples[0])[0]
         for sample_num in ['s1', 's2'] :
             PSMs_full_dict[sample_num] = {}
-            for sample in samples_dict[sample_num] :
+            for sample in samples_dict[sample_num]:
                 i = 0
-                for filename in os.listdir(dir_name) :
+                for filename in os.listdir(dir_name):
                     if filename.startswith(sample) and filename.endswith(PSMs_suf) :
                         PSMs_full_paths.append(os.path.join(dir_name, filename))
                         PSMs_full_dict[sample_num][sample] = os.path.join(dir_name, filename)
@@ -613,8 +627,8 @@ def run():
             }
 #    print(paths)
     out_directory = args['outdir']
-    sample_1 = args['s1'].split()
-    sample_2 = args['s2'].split()
+    sample_1 = args['s1']#.split()
+    sample_2 = args['s2']#.split()
     
     args['overwrite_features'] = int( args['overwrite_features'])
     args['overwrite_matching'] = int( args['overwrite_matching'])
@@ -661,15 +675,13 @@ def run():
     if args['dino'] :
         for path, sample in zip(mzML_paths, samples) :
             outName = sample + '_features_' + 'dino' + '.tsv'
-            outName_false = outName + '.features.tsv'
             if args['overwrite_features'] == 1 or not os.path.exists(os.path.join(feature_path, outName)) :
-                with open(os.path.join(feature_path, outName_false), mode='w+', buffering= -1, encoding='utf-8') :
-                    logging.info('\n' + 'Writing features' + ' dino ' + sample + '\n')
-                    process = subprocess.Popen([args['dino'], '--outDir='+ feature_path, '--outName='+ outName, path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                    with process.stdout:
-                        log_subprocess_output(process.stdout)
-                    exitscore = process.wait()
-                    logging.debug(exitscore)
+                logging.info('\n' + 'Writing features' + ' dino ' + sample + '\n')
+                process = subprocess.Popen([args['dino'], '--outDir='+ feature_path, '--outName='+ outName, path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                with process.stdout:
+                    log_subprocess_output(process.stdout)
+                exitscore = process.wait()
+                logging.debug(exitscore)
                 os.rename(os.path.join(feature_path, outName + '.features.tsv'),  os.path.join(feature_path, outName) )
             else :
                 logging.info('\n' + 'Not overwriting features ' + ' dino ' + sample + '\n')
@@ -778,7 +790,7 @@ def run():
                 feats = feats.sort_values(by='mz')
 
                 logging.info(suf + ' features ' + sample + '\n' + 'START')
-                temp_df = optimized_search_with_isotope_error_(feats, PSM, )[0]
+                temp_df = optimized_search_with_isotope_error_(feats, PSM)[0]
 
                 cols = ['peptide','protein','calc_neutral_pep_mass','assumed_charge','RT exp','spectrum', 'q','df_features','feature_intensityApex']
 
