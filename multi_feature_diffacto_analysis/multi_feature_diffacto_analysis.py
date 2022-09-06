@@ -19,9 +19,80 @@ from pyteomics.openms import featurexml
 from pyteomics import pepxml, mzid
 import venn
 from venn import venn
-from scipy.stats import pearsonr 
+from scipy.stats import pearsonr, scoreatpercentile, percentileofscore
 from scipy.optimize import curve_fit
 import logging
+
+
+class WrongInputError(NotImplementedError):
+    pass
+
+
+class EmptyFileError(ValueError):
+    pass
+
+
+def read_PSMs(infile_path) :
+    if infile_path.endswith('.tsv') :
+        df1 = pd.read_csv(infile_path, sep = '\t')
+    elif infile_path.lower().endswith('.pep.xml') or infile_path.lower().endswith('.pepxml'):
+        df1 = pepxml.DataFrame(infile_path)
+        ftype = 'pepxml'
+    elif infile_path.lower().endswith('.mzid'):
+        df1 = mzid.DataFrame(infile_path)
+    else:
+        raise WrongInputError()
+    if not df1.shape[0]:
+        raise EmptyFileError()
+    
+    if 'MS-GF:EValue' in df1.columns:
+        # MSGF search engine
+        ftype = 'msgf'
+        df1.rename(columns={'PeptideSequence':'peptide', 
+                            'chargeState':'assumed_charge',
+                            'spectrumID':'spectrum',
+                            'accession':'protein',
+                            'protein description':'protein_descr',
+                            'MS-GF:EValue':'expect',
+                            
+                           }, 
+                   inplace=True)
+        df1['precursor_neutral_mass'] = df1['calculatedMassToCharge'] * df1['assumed_charge'] - df1['assumed_charge'] * 1.00727649
+
+    if set(df1['protein_descr'].str[0]) == {None}:
+        # MSFragger
+#        logger.debug('Adapting MSFragger DataFrame.')
+#        logger.debug('Proteins before: %s', df1.loc[1, 'protein'])
+        protein = df1['protein'].apply(lambda row: [x.split(None, 1) for x in row])
+        df1['protein'] = protein.apply(lambda row: [x[0] for x in row])
+#        logger.debug('Proteins after: %s', df1.loc[1, 'protein'])
+    
+    df1.loc[pd.isna(df1['protein_descr']), 'protein_descr'] = df1.loc[pd.isna(df1['protein_descr']), 'protein']
+    df1 = df1[~pd.isna(df1['peptide'])]
+
+    df1['spectrum'] = df1['spectrum'].apply(lambda x: x.split(' RTINS')[0])
+    
+    if 'RT exp' not in df1.columns :
+        if 'retention_time_sec' not in df1.columns:
+            if 'scan start time' in df1.columns:
+                df1.rename(columns={'scan start time':'RT exp'}, inplace=True) 
+            else:
+                df1['RT exp'] = 0
+        else:
+            df1['RT exp'] = df1['retention_time_sec'] / 60
+            df1 = df1.drop(['retention_time_sec', ], axis=1)
+    
+    cols = ['spectrum', 'peptide', 'protein', 'assumed_charge', 'precursor_neutral_mass', 'RT exp']
+    if 'q' in df1.columns :
+        cols.append('q')
+    if 'ionmobility' in df1.columns and 'im' in df1.columns :
+        cols.append('ionmobility')
+    if 'compensation_voltage' in df1.columns :
+        cols.append('compensation_voltage')
+        
+    df1 = df1[cols]
+    
+    return df1
 
 
 ## Функции для сопоставления
@@ -29,10 +100,6 @@ import logging
     
 def noisygaus(x, a, x0, sigma, b):
     return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2)) + b
-
-
-def noisydoublegaus(x, x0, a1, a2, sigma1, sigma2, b):
-    return a1 * np.exp(-(x - x0) ** 2 / (2 * sigma1 ** 2)) + a2 * np.exp(-(x - x0) ** 2 / (2 * sigma2 ** 2)) + b
 
 
 def opt_bin(ar, border=16) :
@@ -82,7 +149,7 @@ def opt_bin(ar, border=16) :
     return bwidth
 
 
-def calibrate_mass(mass_left, mass_right, true_md, parameters):
+def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False) :
 
     bwidth = opt_bin(true_md)
     bbins = np.arange(mass_left, mass_right, bwidth)
@@ -114,17 +181,16 @@ def calibrate_mass(mass_left, mass_right, true_md, parameters):
     mi = b2[np.argmax(H2)]
     s = (max(t) - min(t))/6
     noise = min(H2)
-    
-#     if parameters == 'mz_diff_ppm' :
-#         popt, pcov = curve_fit(noisydoublegaus, b2[1:], H2, p0=[ mi, m, m, s, s, noise])
-
-#         mass_shift, mass_sigma = popt[0], max(abs(popt[3]), abs(popt[4]))
-#         logging.debug('shift: ' + str(mass_shift) + '\t' + 'sigma: ' + str(mass_sigma))
-#         return mass_shift, mass_sigma, pcov[0][0]
-#     else :
     popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
-
+    logging.debug(popt)
     mass_shift, mass_sigma = popt[1], abs(popt[2])
+
+    if check_gauss:
+        logging.debug('GAUSS FIT, %f, %f' % (percentileofscore(t, mass_shift - 3 * mass_sigma), percentileofscore(t, mass_shift + 3 * mass_sigma)))
+
+        if percentileofscore(t, mass_shift - 3 * mass_sigma) + 100 - percentileofscore(t, mass_shift + 3 * mass_sigma) > 10:
+            mass_sigma = scoreatpercentile(np.abs(t-mass_shift), 95) / 2
+            
     logging.debug('shift: ' + str(mass_shift) + '\t' + 'sigma: ' + str(mass_sigma))
     return mass_shift, mass_sigma, pcov[0][0]
 
@@ -199,7 +265,7 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
                     check_FAIMS = False
                     logging.info('there is no column "FAIMS" in the PSMs')
             if psms_index not in results:
-                a = psm_mz*(1 + mean_mz*1e-6) -  i*1.003354/psm_charge 
+                a = psm_mz/(1 - mean_mz*1e-6) -  i*1.003354/psm_charge 
                 mass_accuracy = mass_accuracy_ppm*1e-6*a
                 idx_l_psms1_ime = mz_array_ms1.searchsorted(a - mass_accuracy)
                 idx_r_psms1_ime = mz_array_ms1.searchsorted(a + mass_accuracy, side='right')
@@ -219,7 +285,7 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
                         rt1 = psm_rt - rtS
                         rt2 = rtE - psm_rt
                         # if  psm_rt  - mean1> rtS- interval1    and  psm_rt + mean2 < rtE +interval2:
-                        if (rt1 >= 0 or rt1 >= mean1 - interval1) and (rt2 >= 0 or rt2 >= mean2 - interval2):
+                        if rt1 >= min(0, mean1 - interval1) and rt2 >= min(0, mean2 - interval2):
                             ms1_mz = mz_array_ms1[idx_current_ime]
                             mz_diff_ppm = (ms1_mz - a) / a * 1e6
                             rt_diff = (rtE - rtS)/2+rtS - psm_rt
@@ -250,6 +316,7 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
 
 def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,sigma1=False,mean2=0,sigma2=False, mean_mz = 0, sigma_mz = False):
 # sort ='mz_diff_ppm'
+    check_gauss = False
     rtStart_array_ms1 = df_features['rtStart'].values
     rtEnd_array_ms1 = df_features['rtEnd'].values
 
@@ -257,6 +324,7 @@ def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,
         results_psms = total(df_features = df_features,psms = psms,mass_accuracy_ppm = 100)
 
     if parameters == 'mz_diff_ppm' :
+        check_gauss = True
         results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2,mass_accuracy_ppm = 100)
 
     if parameters == 'im_diff':
@@ -281,7 +349,7 @@ def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,
         else:
             ar.append(sorted(value, key=lambda x: abs(x[sort]))[0][parameters])
 
-    mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, parameters)
+    mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss)
     return mean, sigma
 
 
@@ -316,6 +384,7 @@ def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_r
     for i in cnt.values():
         results_isotope_end.append(i/len(psms))
     end_isotope_ = list(np.add.accumulate(np.array(results_isotope_end))*100)
+    logging.info(end_isotope_)
     df_features_dict = {}
     intensity_dict = {}
     for kk,v in results_isotope.items():
@@ -324,9 +393,9 @@ def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_r
         tmp = sorted(v, key=lambda x: 1e6*idx[x['i']] + np.sqrt( (x['mz_diff_ppm']/sigma_mz)**2 + min([0, (x['rt1']/sigma_rt1)**2, (x['rt2']/sigma_rt2)**2])))[0]
         df_features_dict[kk] = tmp['idx_current_ime']
         intensity_dict[kk] = tmp['intensity']
-    ser1 = pd.DataFrame(df_features_dict.values(),index =range(0, len(df_features_dict),1), columns = ['df_features'])
-    ser2 = pd.DataFrame(df_features_dict.keys(),index =range(0, len(df_features_dict),1), columns = ['spectrum'])
-    ser3 = pd.DataFrame(intensity_dict.values(),index =range(0, len(intensity_dict),1), columns = ['feature_intensityApex'])
+    ser1 = pd.DataFrame(df_features_dict.values(), index = df_features_dict.keys(), columns = ['df_features'])
+    ser2 = pd.DataFrame(df_features_dict.keys(), index = df_features_dict.keys(), columns = ['spectrum'])
+    ser3 = pd.DataFrame(intensity_dict.values(), index = intensity_dict.keys(), columns = ['feature_intensityApex'])
     s = pd.concat([ser1,ser2],sort = False,axis = 1 )
     ss = pd.concat([s,ser3],sort = False,axis = 1 )
     features_for_psm_db = pd.merge(psms,ss,on = 'spectrum',how='outer')
@@ -419,7 +488,7 @@ def run():
                     logging.StreamHandler(sys.stdout) ]
     )
     logging.getLogger('matplotlib').setLevel(logging.ERROR)
-    
+
     def log_subprocess_output(pipe):
         for line in iter(pipe.readline, b''): # b'\n'-separated lines
             logging.info('From subprocess: %r', line)
@@ -452,6 +521,18 @@ def run():
                 finally :
                     pass
     logging.debug(args)
+
+    if args['s1'] :
+        if type(args['s1']) is str :
+            args['s1'] = args['s1'].split(' ')
+        else :
+            logging.critical('invalid s1 input')
+    if args['s2'] :
+        if type(args['s2']) is str :
+            args['s2'] = args['s2'].split(' ')
+        else :
+            logging.critical('invalid s2 input')
+        
 #    print(args['s1'].split())
 
     if not args['dif'] :
@@ -496,15 +577,13 @@ def run():
     samples_dict = {}
     mzML_paths = []
     for sample_num in ['s1', 's2']:
-        if args[sample_num] :
-            samples_dict[sample_num] = []
-            for z in args[sample_num].split():
-                mzML_paths.append(z)
-                samples.append(z.split('/')[-1].replace('.mzML', ''))
-                samples_dict[sample_num].append(z.split('/')[-1].replace('.mzML', ''))
-        else :
-            logging.critical('sample '+ sample_num + ' .mzML files are required')
-            return -1
+        samples_dict[sample_num] = []
+        for z in args[sample_num]:
+            mzML_paths.append(z)
+            samples.append(z.split('/')[-1].replace('.mzML', ''))
+            samples_dict[sample_num].append(z.split('/')[-1].replace('.mzML', ''))
+    
+    logging.debug(samples_dict)
 
     PSMs_full_paths = []
     PSMs_full_dict = {}
@@ -524,7 +603,7 @@ def run():
                     return -1
     else :
         logging.warning('trying to find *%s files in the same directory as .mzML', PSMs_suf)
-        dir_name = mzML_paths[0].split(sample[0])[0]
+        dir_name = os.path.abspath(mzML_paths[0]).split(samples[0])[0]
         for sample_num in ['s1', 's2'] :
             PSMs_full_dict[sample_num] = {}
             for sample in samples_dict[sample_num] :
@@ -542,76 +621,78 @@ def run():
     mzML_dict = {}
     for sample, mzML in zip(samples, mzML_paths) :
         mzML_dict[sample] = mzML
-
-    peptides_dict = {}
-    peptides_suf = 'peptides.tsv'
-    if args['pept_folder'] and args['pept_folder'] != args['PSM_folder'] :
-        if os.path.exists(args['pept_folder']) :
+    
+    if mode != 'feature matching' : 
+        peptides_dict = {}
+        peptides_suf = 'peptides.tsv'
+        if args['pept_folder'] and args['pept_folder'] != args['PSM_folder'] :
+            if os.path.exists(args['pept_folder']) :
+                for sample in samples :
+                    i = 0
+                    for filename in os.listdir(args['pept_folder']) :
+                        if filename.startswith(sample) and filename.endswith(peptides_suf) :
+                            peptides_dict[sample] = os.path.join(args['pept_folder'], filename)
+                            i += 1
+                    if i == 0 :
+                        logging.critical('sample '+ sample + ' peptides file not found')
+                        return -1
+            else :
+                logging.critical('path to peptides files folder does not exist')
+                return -1
+        else :
+            logging.warning('trying to find *_%s files in the same directory as PSMs', peptides_suf)
+            dir_name = PSMs_full_paths[0].split(sample[0])[0]
+            logging.debug(dir_name)
             for sample in samples :
                 i = 0
-                for filename in os.listdir(args['pept_folder']) :
+                for filename in os.listdir(dir_name) :
                     if filename.startswith(sample) and filename.endswith(peptides_suf) :
-                        peptides_dict[sample] = os.path.join(args['pept_folder'], filename)
+                        peptides_dict[sample] = os.path.join(dir_name, filename)
+                        logging.debug(os.path.join(dir_name, filename))
                         i += 1
                 if i == 0 :
                     logging.critical('sample '+ sample + ' peptides file not found')
                     return -1
-        else :
-            logging.critical('path to peptides files folder does not exist')
-            return -1
-    else :
-        logging.warning('trying to find *_%s files in the same directory as PSMs', peptides_suf)
-        dir_name = PSMs_full_paths[0].split(sample[0])[0]
-        logging.debug(dir_name)
-        for sample in samples :
-            i = 0
-            for filename in os.listdir(dir_name) :
-                if filename.startswith(sample) and filename.endswith(peptides_suf) :
-                    peptides_dict[sample] = os.path.join(dir_name, filename)
-                    logging.debug(os.path.join(dir_name, filename))
-                    i += 1
-            if i == 0 :
-                logging.critical('sample '+ sample + ' peptides file not found')
+
+        proteins_dict = {}
+        proteins_suf = 'proteins.tsv'
+        if args['prot_folder'] and args['prot_folder'] != args['PSM_folder'] :
+            if os.path.exists(args['prot_folder']) :
+                for sample in samples :
+                    i = 0
+                    for filename in os.listdir(args['prot_folder']) :
+                        if filename.startswith(sample) and filename.endswith(proteins_suf) :
+                            proteins_dict[sample] = os.path.join(args['prot_folder'], filename)
+                            i += 1
+                    if i == 0 :
+                        logging.critical('sample '+ sample + ' proteins file not found')
+                        return -1
+            else :
+                logging.critical('path to proteins files folder does not exist')
                 return -1
-            
-    proteins_dict = {}
-    proteins_suf = 'proteins.tsv'
-    if args['prot_folder'] and args['prot_folder'] != args['PSM_folder'] :
-        if os.path.exists(args['prot_folder']) :
+        else :
+            logging.warning('trying to find *_proteins.tsv files in the same directory as PSMs')
+            dir_name = PSMs_full_paths[0].split(sample[0])[0]
             for sample in samples :
                 i = 0
-                for filename in os.listdir(args['prot_folder']) :
+                for filename in os.listdir(dir_name) :
                     if filename.startswith(sample) and filename.endswith(proteins_suf) :
-                        proteins_dict[sample] = os.path.join(args['prot_folder'], filename)
+                        proteins_dict[sample] = os.path.join(dir_name, filename)
                         i += 1
                 if i == 0 :
                     logging.critical('sample '+ sample + ' proteins file not found')
                     return -1
-        else :
-            logging.critical('path to proteins files folder does not exist')
-            return -1
-    else :
-        logging.warning('trying to find *_proteins.tsv files in the same directory as PSMs')
-        dir_name = PSMs_full_paths[0].split(sample[0])[0]
-        for sample in samples :
-            i = 0
-            for filename in os.listdir(dir_name) :
-                if filename.startswith(sample) and filename.endswith(proteins_suf) :
-                    proteins_dict[sample] = os.path.join(dir_name, filename)
-                    i += 1
-            if i == 0 :
-                logging.critical('sample '+ sample + ' proteins file not found')
-                return -1
     
     paths = {'mzML': mzML_dict, 
              'PSM_full' : PSMs_full_dict,
-             'peptides' : peptides_dict,
-             'proteins' : proteins_dict
             }
+    if mode != 'feature matching' :
+        paths['peptides'] = peptides_dict
+        paths['proteins'] = proteins_dict
 #    print(paths)
     out_directory = args['outdir']
-    sample_1 = args['s1'].split()
-    sample_2 = args['s2'].split()
+    sample_1 = args['s1']
+    sample_2 = args['s2']
     
     args['overwrite_features'] = int( args['overwrite_features'])
     args['overwrite_matching'] = int( args['overwrite_matching'])
@@ -658,7 +739,6 @@ def run():
     if args['dino'] :
         for path, sample in zip(mzML_paths, samples) :
             outName = sample + '_features_' + 'dino' + '.tsv'
-            outName_false = outName + '.features.tsv'
             if args['overwrite_features'] == 1 or not os.path.exists(os.path.join(feature_path, outName)) :
                 logging.info('\n' + 'Writing features' + ' dino ' + sample + '\n')
                 process = subprocess.Popen([args['dino'], '--outDir='+ feature_path, '--outName='+ outName, path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -766,7 +846,7 @@ def run():
 #    suffixes = ['dino', 'bio', 'bio2', 'openMS'] - уже заданы
     logging.info('Start matching features')
     for PSM_path, sample in zip(PSMs_full_paths, samples) :
-        PSM = pd.read_csv(PSM_path, sep = '\t')
+        PSM = read_PSMs(PSM_path)
         logging.info('sample %s', sample)
         for suf in suffixes :
             if args['overwrite_matching'] == 1 or not os.path.exists(os.path.join(matching_path, sample + '_' + suf + '.tsv')) :
@@ -778,11 +858,11 @@ def run():
                 # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2])[0]
                 # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = 0,sigma_mz = 10,mean_im = False,sigma_im = False, isotopes_array=[0,])[0]
 
-                cols = ['peptide','protein','calc_neutral_pep_mass','assumed_charge','RT exp','spectrum', 'q','df_features','feature_intensityApex']
+                
 
                 median = temp_df['feature_intensityApex'].median()
                 temp_df['med_norm_feature_intensityApex'] = temp_df['feature_intensityApex']/median
-                cols.append('med_norm_feature_intensityApex')
+                cols = list(temp_df.columns)
                 
                 logging.info(suf + ' features ' + sample + ' DONE')
                 temp_df.to_csv(os.path.join(matching_path, sample + '_' + suf + '.tsv'), sep='\t', columns=cols)
