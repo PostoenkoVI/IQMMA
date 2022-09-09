@@ -411,10 +411,7 @@ def run():
     -------------
     (prefered way)
     $ multi_features_diffacto_analisys.py -cfg /path_to/default.ini
-    
-    or (possible problems with file path)
-    $ multi_features_diffacto_analisys.py @default.txt
-    
+        
     or 
     $ multi_features_diffacto_analisys.py -mzML sample1_1.mzML sample1_n.mzML sample2_1.mzML sample1_n.mzML 
                                           -s1 sample1_1_PSMs_full.tsv sample1_n_PSMs_full.tsv 
@@ -438,7 +435,7 @@ def run():
     parser.add_argument('-logs', help='level of logging, (DEBUG, INFO, WARNING, ERROR, CRITICAL)', default='WARNING')
     parser.add_argument('-log_path', help='path to logging file', default='./mult_feat_diff.log')
     parser.add_argument('-cfg', help='path to config .ini file')
-    parser.add_argument('-cfg_category', help='name of category to prioritize in the .ini file')
+    parser.add_argument('-cfg_category', help='name of category to prioritize in the .ini file, default: DEFAULT')
     parser.add_argument('-dif', help='path to Diffacto')
 #    parser.add_argument('-scav2dif', help='path to scav2diffacto')
     parser.add_argument('-s1', nargs='+', help='input mzML files for sample 1 (also file names are the keys for searching other needed files)')
@@ -452,7 +449,7 @@ def run():
     parser.add_argument('-dino', help='path to Dinosaur')
     parser.add_argument('-bio', help='path to Biosaur')
     parser.add_argument('-bio2', help='path to Biosaur2')
-    parser.add_argument('-openms', help='path to OpenMS feature')
+    parser.add_argument('-openMS', help='path to OpenMS feature')
     
     parser.add_argument('-outdir', help='name of directory to store results')
     parser.add_argument('-feature_folder', help='directory to store features')
@@ -471,7 +468,7 @@ def run():
     parser.add_argument('-outPept', help='name of output diffacto peptides file (important: .txt)', default='peptides.txt')
     parser.add_argument('-outSampl', help='name of output diffacto samples file (important: .txt)', default='sample.txt')
     parser.add_argument('-outDiff', help='name of diffacto output file (important: .txt)', default='diffacto_out.txt')
-    parser.add_argument('-normDiff', help='normalization method for Diffacto. Can be average, median, GMM or None', default='None')
+    parser.add_argument('-normDiff', help='normalization method for Diffacto. Can be average, median, GMM or None', default='median')
     parser.add_argument('-impute_threshold', help='impute_threshold for missing values fraction', default='0.25')
     parser.add_argument('-min_samples', help='minimum number of samples for peptide usage', default='3')
 #    parser.add_argument('-version', action='version', version='%s' % (pkg_resources.require("scavager")[0], ))
@@ -494,45 +491,66 @@ def run():
             logging.info('From subprocess: %r', line)
     
     logging.info('Started')
+    
+    
+    default_config = configparser.ConfigParser(allow_no_value=True, empty_lines_in_values=False, )
+    default_config.optionxform = lambda option: option
+    d_cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'default.ini')
+    if os.path.exists(d_cfg_path) :
+        default_config.read(d_cfg_path)
+    else :
+        logging.critical('default config file does not exist')
+        return -1
+    options = dict(default_config['DEFAULT'])
+    
     if args['cfg'] :
-        if args['cfg_category'] :
-            cat = args['cfg_category']
-        else :
-            cat = 'settings_one'
-        config = configparser.RawConfigParser(allow_no_value=True, empty_lines_in_values=False, )
+        config = configparser.ConfigParser(allow_no_value=True, empty_lines_in_values=False, )
+        config.optionxform = lambda option: option
         if os.path.exists(args['cfg']) :
             config.read(args['cfg'])
         else :
             logging.critical('path to config file does not exist')
             return -1
-            
-        for key in args.keys() :
-            if not args[key] :
-                try :
-                    args[key] = config[cat][key]
-                except :
-                    if not args[key] :
-                        try :
-                            args[key] = config['DEFAULT'][key]
-                        except :
-                            pass
-                        finally :
-                            pass
-                finally :
-                    pass
+        if args['cfg_category'] :
+            cat = args['cfg_category']
+        else :
+            cat = options['cfg_category']
+                
+        tmp = {k: v for k, v in dict(config[cat]).items() if v != ''}
+        options.update( tmp )
+    
+    tmp = {k: v for k, v in args.items() if v is not None}
+    args.clear()
+    args.update(tmp)
+    tmp.clear()
+    
+    options.update(args)
+    
+    for k, v in options.items() :
+        if v == '' :
+            options.update( {k: None} )
+    
+    args = options.copy()
+    options.clear()    
     logging.debug(args)
 
     if args['s1'] :
         if type(args['s1']) is str :
             args['s1'] = args['s1'].split(' ')
+        elif type(args['s1']) is list :
+            pass
         else :
             logging.critical('invalid s1 input')
+            return -1
     if args['s2'] :
         if type(args['s2']) is str :
             args['s2'] = args['s2'].split(' ')
+        elif type(args['s2']) is list or not args['s2'] :
+            pass
         else :
             logging.critical('invalid s2 input')
-        
+            return -1
+    
 #    print(args['s1'].split())
 
     if not args['dif'] :
@@ -547,11 +565,11 @@ def run():
         logging.critical('path to output directory is required')
         return -1
     
-    arg_suff = {'dino': 'dino', 'bio' : 'bio', 'bio2' : 'bio2', 'openms' : 'openMS'}
+    arg_suff = ['dino', 'bio', 'bio2', 'openMS']
     suffixes = []
     for suf in arg_suff :
         if args[suf] :
-            suffixes.append(arg_suff[suf])
+            suffixes.append(suf)
     
     mode = None
     if not args['s2'] :
@@ -791,7 +809,7 @@ def run():
 
 # На выходе создает в feature_path папку OpenMS с файлами *.featureXML и добавляет в папку out_directory/features файлы *sample*_features_openMS.tsv
     
-    if args['openms'] :
+    if args['openMS'] :
         out_path = os.path.join(feature_path, 'openMS')
         subprocess.call(['mkdir', '-p', out_path])
             
@@ -800,7 +818,7 @@ def run():
             if args['overwrite_features'] == 1 or not os.path.exists(out_path) :
                 logging.info('\n' + 'Writing .featureXML ' + ' openMS ' + sample + '\n')
 
-                process = subprocess.Popen([args['openms'], '-in', path, '-out', out_path, '-algorithm:isotopic_pattern:charge_low', '2', '-algorithm:isotopic_pattern:charge_high', '7'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                process = subprocess.Popen([args['openMS'], '-in', path, '-out', out_path, '-algorithm:isotopic_pattern:charge_low', '2', '-algorithm:isotopic_pattern:charge_high', '7'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 with process.stdout:
                     log_subprocess_output(process.stdout)
                 exitscore = process.wait()
