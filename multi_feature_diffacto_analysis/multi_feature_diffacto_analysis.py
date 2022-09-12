@@ -471,8 +471,11 @@ def run():
     parser.add_argument('-normDiff', help='normalization method for Diffacto. Can be average, median, GMM or None')
     parser.add_argument('-impute_threshold', help='impute_threshold for missing values fraction')
     parser.add_argument('-min_samples', help='minimum number of samples for peptide usage')
+    parser.add_argument('-isotopes', help='monoisotope error')
 #    parser.add_argument('-version', action='version', version='%s' % (pkg_resources.require("scavager")[0], ))
     args = vars(parser.parse_args())
+    
+        
     
     loglevel = args['logs']
     numeric_level = getattr(logging, loglevel.upper(), None)
@@ -719,7 +722,7 @@ def run():
     args['venn'] = int( args['venn'])
     args['choice'] = int( args['choice'])
     args['norm'] = int( args['norm'])
-    
+    args['isotopes'] = [int(isoval.strip()) for isoval in args['isotopes'].split(',')]
     logging.debug('PSMs_full_paths: %s', PSMs_full_paths)
     logging.debug('mzML_paths: %s', mzML_paths)
     logging.debug('out_directory: %s', out_directory)
@@ -872,7 +875,7 @@ def run():
                 feats = feats.sort_values(by='mz')
 
                 logging.info(suf + ' features ' + sample + '\n' + 'START')
-                temp_df = optimized_search_with_isotope_error_(feats, PSM, )[0]
+                temp_df = optimized_search_with_isotope_error_(feats, PSM,isotopes_array=args['isotopes']  )[0]
                 # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2])[0]
                 # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = 0,sigma_mz = 10,mean_im = False,sigma_im = False, isotopes_array=[0,])[0]
 
