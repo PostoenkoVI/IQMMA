@@ -54,7 +54,6 @@ def read_PSMs(infile_path) :
                             'accession':'protein',
                             'protein description':'protein_descr',
                             'MS-GF:EValue':'expect',
-                            
                            }, 
                    inplace=True)
         df1['precursor_neutral_mass'] = df1['calculatedMassToCharge'] * df1['assumed_charge'] - df1['assumed_charge'] * 1.00727649
@@ -432,8 +431,8 @@ def run():
     ''',
         formatter_class = argparse.ArgumentDefaultsHelpFormatter, fromfile_prefix_chars='@')
     
-    parser.add_argument('-logs', help='level of logging, (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
-    parser.add_argument('-log_path', help='path to logging file')
+    parser.add_argument('-logs', help='level of logging, (DEBUG, INFO, WARNING, ERROR, CRITICAL)', default='WARNING')
+    parser.add_argument('-log_path', help='path to logging file', default='./mult_feat_diff.log')
     parser.add_argument('-cfg', help='path to config .ini file')
     parser.add_argument('-cfg_category', help='name of category to prioritize in the .ini file, default: DEFAULT')
     parser.add_argument('-dif', help='path to Diffacto')
@@ -462,39 +461,17 @@ def run():
     parser.add_argument('-mixed', help='whether to reanalyze mixed intensities (1) or not (0)')
     parser.add_argument('-venn', help='whether to plot venn diagrams (1) or not (0)')
     parser.add_argument('-pept_intens', help='max_intens - as intensity for peptide would be taken maximal intens between charge states; summ_intens - as intensity for peptide would be taken sum of intens between charge states; z-attached - each charge state would be treated as independent peptide')
-    parser.add_argument('-choice', help='method how to choose right intensities for peptide. 0 - default order and min Nan values, 1 - min Nan and min of summ CV, 2 - min Nan and min of max CV, 3 - default order with filling Nan values between programs (if using this variant -norm MUST be applied)')
+    parser.add_argument('-choice', help='method how to choose right intensities for peptide. 0 - default order and min Nan values, 1 - min Nan and min of sum CV, 2 - min Nan and min of max CV, 3 - min Nan and min of squared sum CV, 4 - default order with filling Nan values between programs (if using this variant -norm MUST be applied)')
     parser.add_argument('-norm', help='normalization method for intensities. Can be 1 - median or 0 - no normalization')
     
-    parser.add_argument('-outPept', help='name of output diffacto peptides file (important: .txt)')
-    parser.add_argument('-outSampl', help='name of output diffacto samples file (important: .txt)')
-    parser.add_argument('-outDiff', help='name of diffacto output file (important: .txt)')
-    parser.add_argument('-normDiff', help='normalization method for Diffacto. Can be average, median, GMM or None')
-    parser.add_argument('-impute_threshold', help='impute_threshold for missing values fraction')
-    parser.add_argument('-min_samples', help='minimum number of samples for peptide usage')
-    parser.add_argument('-isotopes', help='monoisotope error')
+    parser.add_argument('-outPept', help='name of output diffacto peptides file (important: .txt)', default='peptides.txt')
+    parser.add_argument('-outSampl', help='name of output diffacto samples file (important: .txt)', default='sample.txt')
+    parser.add_argument('-outDiff', help='name of diffacto output file (important: .txt)', default='diffacto_out.txt')
+    parser.add_argument('-normDiff', help='normalization method for Diffacto. Can be average, median, GMM or None', default='median')
+    parser.add_argument('-impute_threshold', help='impute_threshold for missing values fraction', default='0.25')
+    parser.add_argument('-min_samples', help='minimum number of samples for peptide usage', default='3')
 #    parser.add_argument('-version', action='version', version='%s' % (pkg_resources.require("scavager")[0], ))
     args = vars(parser.parse_args())
-    
-        
-    
-    loglevel = args['logs']
-    numeric_level = getattr(logging, loglevel.upper(), None)
-    if not isinstance(numeric_level, int):
-        raise ValueError('Invalid log level: %s' % loglevel)
-    logging.basicConfig(
-        format='%(asctime)s [%(levelname)s]: %(message)s',
-        level=numeric_level,
-        handlers=[  logging.FileHandler(args['log_path'], mode='w', encoding='utf-8'),
-                    logging.StreamHandler(sys.stdout) ]
-    )
-    logging.getLogger('matplotlib').setLevel(logging.ERROR)
-
-    def log_subprocess_output(pipe):
-        for line in iter(pipe.readline, b''): # b'\n'-separated lines
-            logging.info('From subprocess: %r', line)
-    
-    logging.info('Started')
-    
     
     default_config = configparser.ConfigParser(allow_no_value=True, empty_lines_in_values=False, )
     default_config.optionxform = lambda option: option
@@ -534,7 +511,31 @@ def run():
             options.update( {k: None} )
     
     args = options.copy()
-    options.clear()    
+    options.clear()
+    
+    loglevel = args['logs']
+    if args['log_path'] :
+        lst = args['log_path'].split('/')[:-1]
+        log_directory = '/' + str(os.path.join(*lst))
+        subprocess.call(['mkdir', '-p', log_directory])
+        
+    numeric_level = getattr(logging, loglevel.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError('Invalid log level: %s' % loglevel)
+    logging.basicConfig(
+        format='%(asctime)s [%(levelname)s]: %(message)s',
+        level=numeric_level,
+        handlers=[  logging.FileHandler(args['log_path'], mode='w', encoding='utf-8'),
+                    logging.StreamHandler(sys.stdout) ]
+    )
+    logging.getLogger('matplotlib').setLevel(logging.ERROR)
+
+    def log_subprocess_output(pipe):
+        for line in iter(pipe.readline, b''): # b'\n'-separated lines
+            logging.info('From subprocess: %r', line)
+    
+    logging.info('Started')
+    
     logging.debug(args)
 
     if args['s1'] :
@@ -610,33 +611,22 @@ def run():
     PSMs_full_dict = {}
     PSMs_suf = args['PSM_format']
     if args['PSM_folder'] :
-        for sample_num in ['s1', 's2'] :
-            PSMs_full_dict[sample_num] = {}
-            for sample in samples_dict[sample_num] :
-                i = 0
-                for filename in os.listdir(args['PSM_folder']) :
-                    if filename.startswith(sample) and filename.endswith(PSMs_suf) :
-                        PSMs_full_paths.append(os.path.join(args['PSM_folder'], filename))
-                        PSMs_full_dict[sample_num][sample] = os.path.join(args['PSM_folder'], filename)
-                        i += 1
-                if i == 0 :
-                    logging.critical('sample '+ sample + ' PSM file not found')
-                    return -1
+        dir_name = args['PSM_folder']
     else :
         logging.warning('trying to find *%s files in the same directory as .mzML', PSMs_suf)
         dir_name = os.path.abspath(mzML_paths[0]).split(samples[0])[0]
-        for sample_num in ['s1', 's2'] :
-            PSMs_full_dict[sample_num] = {}
-            for sample in samples_dict[sample_num] :
-                i = 0
-                for filename in os.listdir(dir_name) :
-                    if filename.startswith(sample) and filename.endswith(PSMs_suf) :
-                        PSMs_full_paths.append(os.path.join(dir_name, filename))
-                        PSMs_full_dict[sample_num][sample] = os.path.join(dir_name, filename)
-                        i += 1
-                if i == 0 :
-                    logging.critical('sample ' + sample + ' PSM file not found')
-                    return -1
+    for sample_num in ['s1', 's2'] :
+        PSMs_full_dict[sample_num] = {}
+        for sample in samples_dict[sample_num] :
+            i = 0
+            for filename in os.listdir(dir_name) :
+                if filename.startswith(sample) and filename.endswith(PSMs_suf) :
+                    PSMs_full_paths.append(os.path.join(dir_name, filename))
+                    PSMs_full_dict[sample_num][sample] = os.path.join(dir_name, filename)
+                    i += 1
+            if i == 0 :
+                logging.critical('sample ' + sample + ' PSM file not found')
+                return -1
     logging.debug(PSMs_full_dict)
 
     mzML_dict = {}
@@ -648,15 +638,7 @@ def run():
         peptides_suf = 'peptides.tsv'
         if args['pept_folder'] and args['pept_folder'] != args['PSM_folder'] :
             if os.path.exists(args['pept_folder']) :
-                for sample in samples :
-                    i = 0
-                    for filename in os.listdir(args['pept_folder']) :
-                        if filename.startswith(sample) and filename.endswith(peptides_suf) :
-                            peptides_dict[sample] = os.path.join(args['pept_folder'], filename)
-                            i += 1
-                    if i == 0 :
-                        logging.critical('sample '+ sample + ' peptides file not found')
-                        return -1
+                dir_name = args['pept_folder']
             else :
                 logging.critical('path to peptides files folder does not exist')
                 return -1
@@ -664,45 +646,37 @@ def run():
             logging.warning('trying to find *_%s files in the same directory as PSMs', peptides_suf)
             dir_name = PSMs_full_paths[0].split(sample[0])[0]
             logging.debug(dir_name)
-            for sample in samples :
-                i = 0
-                for filename in os.listdir(dir_name) :
-                    if filename.startswith(sample) and filename.endswith(peptides_suf) :
-                        peptides_dict[sample] = os.path.join(dir_name, filename)
-                        logging.debug(os.path.join(dir_name, filename))
-                        i += 1
-                if i == 0 :
-                    logging.critical('sample '+ sample + ' peptides file not found')
-                    return -1
+        for sample in samples :
+            i = 0
+            for filename in os.listdir(dir_name) :
+                if filename.startswith(sample) and filename.endswith(peptides_suf) :
+                    peptides_dict[sample] = os.path.join(dir_name, filename)
+                    logging.debug(os.path.join(dir_name, filename))
+                    i += 1
+            if i == 0 :
+                logging.critical('sample '+ sample + ' peptides file not found in ' + dir_name)
+                return -1
 
         proteins_dict = {}
         proteins_suf = 'proteins.tsv'
         if args['prot_folder'] and args['prot_folder'] != args['PSM_folder'] :
             if os.path.exists(args['prot_folder']) :
-                for sample in samples :
-                    i = 0
-                    for filename in os.listdir(args['prot_folder']) :
-                        if filename.startswith(sample) and filename.endswith(proteins_suf) :
-                            proteins_dict[sample] = os.path.join(args['prot_folder'], filename)
-                            i += 1
-                    if i == 0 :
-                        logging.critical('sample '+ sample + ' proteins file not found')
-                        return -1
+                dir_name = args['pept_folder']
             else :
                 logging.critical('path to proteins files folder does not exist')
                 return -1
         else :
             logging.warning('trying to find *_proteins.tsv files in the same directory as PSMs')
             dir_name = PSMs_full_paths[0].split(sample[0])[0]
-            for sample in samples :
-                i = 0
-                for filename in os.listdir(dir_name) :
-                    if filename.startswith(sample) and filename.endswith(proteins_suf) :
-                        proteins_dict[sample] = os.path.join(dir_name, filename)
-                        i += 1
-                if i == 0 :
-                    logging.critical('sample '+ sample + ' proteins file not found')
-                    return -1
+        for sample in samples :
+            i = 0
+            for filename in os.listdir(dir_name) :
+                if filename.startswith(sample) and filename.endswith(proteins_suf) :
+                    proteins_dict[sample] = os.path.join(dir_name, filename)
+                    i += 1
+            if i == 0 :
+                logging.critical('sample '+ sample + ' proteins file not found')
+                return -1
     
     paths = {'mzML': mzML_dict, 
              'PSM_full' : PSMs_full_dict,
@@ -722,7 +696,7 @@ def run():
     args['venn'] = int( args['venn'])
     args['choice'] = int( args['choice'])
     args['norm'] = int( args['norm'])
-    args['isotopes'] = [int(isoval.strip()) for isoval in args['isotopes'].split(',')]
+    
     logging.debug('PSMs_full_paths: %s', PSMs_full_paths)
     logging.debug('mzML_paths: %s', mzML_paths)
     logging.debug('out_directory: %s', out_directory)
@@ -749,7 +723,11 @@ def run():
             logging.critical('path to feature files folder does not exist')
             return -1
     else :
-        feature_path = os.path.join(out_directory,  'features')
+        if args['PSM_folder'] :
+            dir_name = args['PSM_folder']
+        else :
+            dir_name = PSMs_full_paths[0].split(sample[0])[0]
+        feature_path = os.path.join(dir_name,  'features')
     subprocess.call(['mkdir', '-p', feature_path])
 
 
@@ -875,7 +853,7 @@ def run():
                 feats = feats.sort_values(by='mz')
 
                 logging.info(suf + ' features ' + sample + '\n' + 'START')
-                temp_df = optimized_search_with_isotope_error_(feats, PSM,isotopes_array=args['isotopes']  )[0]
+                temp_df = optimized_search_with_isotope_error_(feats, PSM, )[0]
                 # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2])[0]
                 # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = 0,sigma_mz = 10,mean_im = False,sigma_im = False, isotopes_array=[0,])[0]
 
@@ -900,12 +878,11 @@ def run():
 
     if mode == 'diffacto' :
         logging.info('Going for quantitative analysis with diffacto')
-
         if args['diffacto_folder'] :
             if os.path.exists(args['diffacto_folder']) :
                 diffacto_folder = args['diffacto_folder']
             else :
-                logging.critical('Path to diffacto does not exists')
+                logging.critical('Path to diffacto results does not exists')
                 return -1
         else :
             diffacto_folder = os.path.join(out_directory, 'diffacto')
@@ -1070,7 +1047,7 @@ def run():
         d = {}
         for suf in full_suf :
             Bonferroni = 0.05/len(diff_out[suf])
-            d[suf] = diff_out[suf].query('(`log2_FC` > 0.5 or `log2_FC` < -0.5) and `P(PECA)` < @Bonferroni')
+            d[suf] = diff_out[suf].query('`P(PECA)` < @Bonferroni')
 
 
         comp_df = d[full_suf[0] ][ d[full_suf[0] ]['S/N'] > 0.01 ].loc[:, ['Protein', 'log2_FC']]
@@ -1201,6 +1178,7 @@ def run():
             
             merge_df[ 'summ_cv'+short_suffixes[suf] ] = merge_df['s1_cv'+short_suffixes[suf]] + merge_df['s2_cv'+short_suffixes[suf]]
             merge_df[ 'max_cv'+short_suffixes[suf] ] = merge_df.loc[:, ['s1_cv'+short_suffixes[suf], 's2_cv'+short_suffixes[suf]] ].max(axis=1)
+            merge_df[ 'sq_summ_cv'+short_suffixes[suf] ] = np.sqrt(merge_df['s1_cv'+short_suffixes[suf]]**2 + merge_df['s2_cv'+short_suffixes[suf]]**2)
             merge_df.drop(columns=[ 's1_mean'+short_suffixes[suf], 's2_mean'+short_suffixes[suf], 
                                     's1_std'+short_suffixes[suf], 's2_std'+short_suffixes[suf], 
                                     's1_'+'not_NaN' + short_suffixes[suf], 's2_'+'not_NaN' + short_suffixes[suf], 
@@ -1219,13 +1197,15 @@ def run():
             merge_df['tool'] = merge_df['tool'].apply(lambda x: x.split('_')[-1])
 
         # min number of Nan values and min summ or max CV
-        elif args['choice'] == 1 or args['choice'] == 2 :
+        elif args['choice'] == 1 or args['choice'] == 2 or args['choice'] == 3 :
             num_na_cols = ['num_NaN' + short_suffixes[suf] for suf in suffixes]
             merge_df['NaN_border'] = merge_df[num_na_cols].min(axis=1)
             if args['choice'] == 1 :
                 cv = 'summ_cv'
-            if args['choice'] == 2 :
+            elif args['choice'] == 2 :
                 cv = 'max_cv'
+            elif args['choice'] == 3 :
+                cv = 'sq_summ_cv'
             for suf in suffixes :
                 merge_df['masked_CV' + short_suffixes[suf] ] = merge_df[ cv + short_suffixes[suf] ].mask(merge_df[ 'num_NaN' + short_suffixes[suf] ] > merge_df['NaN_border'])
             masked_CV_cols = ['masked_CV' + short_suffixes[suf] for suf in suffixes]
@@ -1234,7 +1214,7 @@ def run():
             merge_df['tool'] = merge_df['tool'].apply(lambda x: x.split('_')[-1])
 
         # min number of Nan values + default order to fill NaNs (in order with maximum differentially expressed proteins in single diffacto runs)
-        elif args['choice'] == 3 :
+        elif args['choice'] == 4 :
             suffix_list = [ very_short_suf_dict[suf] for suf in default_order ]
             suffix_tuple = tuple(suffix_list)
             num_na_cols = ['num_NaN_' + suf for suf in suffix_list]
@@ -1276,7 +1256,7 @@ def run():
                 l = len(tab)
                 Intensity = []
 
-                if args['choice'] == 3 :
+                if args['choice'] == 4 :
                     for i in range(l) :
                         for suf in tab[i][-1] :
                             if not np.isnan(tab[i][ temp_dict[suf] ]) :
@@ -1378,12 +1358,11 @@ def run():
 
             paths['DiffSampl'][suf] = os.path.join(diffacto_folder, args['outSampl'].replace('.txt', '_' + suf + '.txt'))
             out = open( paths['DiffSampl'][suf] , 'w')
-            for sample_num in ['s1', 's2']:
-                if args[sample_num] :
-                    for sample in samples_dict[sample_num] :
-                        label = sample
-                        out.write(label + '\t' + sample_num + '\n')
-                        logging.info(label + '\t' + sample_num)
+            for sample_num in samples_dict.keys():
+                for sample in samples_dict[sample_num] :
+                    label = sample
+                    out.write(label + '\t' + sample_num + '\n')
+                    logging.info(label + '\t' + sample_num)
             out.close()
             logging.info('Done')
 
@@ -1426,7 +1405,7 @@ def run():
             d = {}
             for suf in full_suf :
                 Bonferroni = 0.05/len(diff_out[suf])
-                d[suf] = diff_out[suf].query('(`log2_FC` > 0.5 or `log2_FC` < -0.5) and `P(PECA)` < @Bonferroni')
+                d[suf] = diff_out[suf].query('`P(PECA)` < @Bonferroni')
 
 
             comp_df = d[full_suf[0] ][ d[full_suf[0] ]['S/N'] > 0.01 ].loc[:, ['Protein', 'log2_FC']]
