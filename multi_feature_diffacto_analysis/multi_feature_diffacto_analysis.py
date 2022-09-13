@@ -431,8 +431,8 @@ def run():
     ''',
         formatter_class = argparse.ArgumentDefaultsHelpFormatter, fromfile_prefix_chars='@')
     
-    parser.add_argument('-logs', help='level of logging, (DEBUG, INFO, WARNING, ERROR, CRITICAL)', default='WARNING')
-    parser.add_argument('-log_path', help='path to logging file', default='./mult_feat_diff.log')
+    parser.add_argument('-logs', help='level of logging, (DEBUG, INFO, WARNING, ERROR, CRITICAL)', )
+    parser.add_argument('-log_path', help='path to logging file', )
     parser.add_argument('-cfg', help='path to config .ini file')
     parser.add_argument('-cfg_category', help='name of category to prioritize in the .ini file, default: DEFAULT')
     parser.add_argument('-dif', help='path to Diffacto')
@@ -463,13 +463,14 @@ def run():
     parser.add_argument('-pept_intens', help='max_intens - as intensity for peptide would be taken maximal intens between charge states; summ_intens - as intensity for peptide would be taken sum of intens between charge states; z-attached - each charge state would be treated as independent peptide')
     parser.add_argument('-choice', help='method how to choose right intensities for peptide. 0 - default order and min Nan values, 1 - min Nan and min of sum CV, 2 - min Nan and min of max CV, 3 - min Nan and min of squared sum CV, 4 - default order with filling Nan values between programs (if using this variant -norm MUST be applied)')
     parser.add_argument('-norm', help='normalization method for intensities. Can be 1 - median or 0 - no normalization')
+    parser.add_argument('-isotopes', help='monoisotope error')
     
-    parser.add_argument('-outPept', help='name of output diffacto peptides file (important: .txt)', default='peptides.txt')
-    parser.add_argument('-outSampl', help='name of output diffacto samples file (important: .txt)', default='sample.txt')
-    parser.add_argument('-outDiff', help='name of diffacto output file (important: .txt)', default='diffacto_out.txt')
-    parser.add_argument('-normDiff', help='normalization method for Diffacto. Can be average, median, GMM or None', default='median')
-    parser.add_argument('-impute_threshold', help='impute_threshold for missing values fraction', default='0.25')
-    parser.add_argument('-min_samples', help='minimum number of samples for peptide usage', default='3')
+    parser.add_argument('-outPept', help='name of output diffacto peptides file (important: .txt)')
+    parser.add_argument('-outSampl', help='name of output diffacto samples file (important: .txt)', )
+    parser.add_argument('-outDiff', help='name of diffacto output file (important: .txt)', )
+    parser.add_argument('-normDiff', help='normalization method for Diffacto. Can be average, median, GMM or None', )
+    parser.add_argument('-impute_threshold', help='impute_threshold for missing values fraction', )
+    parser.add_argument('-min_samples', help='minimum number of samples for peptide usage', )
 #    parser.add_argument('-version', action='version', version='%s' % (pkg_resources.require("scavager")[0], ))
     args = vars(parser.parse_args())
     
@@ -696,6 +697,7 @@ def run():
     args['venn'] = int( args['venn'])
     args['choice'] = int( args['choice'])
     args['norm'] = int( args['norm'])
+    args['isotopes'] = [int(isoval.strip()) for isoval in args['isotopes'].split(',')]
     
     logging.debug('PSMs_full_paths: %s', PSMs_full_paths)
     logging.debug('mzML_paths: %s', mzML_paths)
@@ -853,7 +855,7 @@ def run():
                 feats = feats.sort_values(by='mz')
 
                 logging.info(suf + ' features ' + sample + '\n' + 'START')
-                temp_df = optimized_search_with_isotope_error_(feats, PSM, )[0]
+                temp_df = optimized_search_with_isotope_error_(feats, PSM,isotopes_array=args['isotopes'] )[0]
                 # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2])[0]
                 # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = 0,sigma_mz = 10,mean_im = False,sigma_im = False, isotopes_array=[0,])[0]
 
