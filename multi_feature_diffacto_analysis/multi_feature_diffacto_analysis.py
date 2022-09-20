@@ -12,6 +12,7 @@ import os
 import errno
 import time
 import ast
+import re
 from os import listdir
 from matplotlib.ticker import PercentFormatter
 from matplotlib_venn import venn3, venn3_circles
@@ -539,22 +540,15 @@ def run():
     
     logging.debug(args)
 
-    if args['s1'] :
-        if type(args['s1']) is str :
-            args['s1'] = args['s1'].split(' ')
-        elif type(args['s1']) is list :
-            pass
-        else :
-            logging.critical('invalid s1 input')
-            return -1
-    if args['s2'] :
-        if type(args['s2']) is str :
-            args['s2'] = args['s2'].split(' ')
-        elif type(args['s2']) is list or not args['s2'] :
-            pass
-        else :
-            logging.critical('invalid s2 input')
-            return -1
+    for sample_num in ['s1', 's2'] :
+        if args[sample_num] :
+            if type(args[sample_num]) is str :
+                args[sample_num] = [x.strip()+'.mzML' for x in re.split(r'\.mzML|\.mzml|\.MZML' , args[sample_num], )][:-1]
+            elif type(args[sample_num]) is list :
+                pass
+            else :
+                logging.critical('invalid {} input'.format(sample_num))
+                return -1
     
 #    print(args['s1'].split())
 
