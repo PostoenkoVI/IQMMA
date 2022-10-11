@@ -15,7 +15,6 @@ import ast
 import re
 from os import listdir
 from matplotlib.ticker import PercentFormatter
-from matplotlib_venn import venn3, venn3_circles
 from pyteomics.openms import featurexml
 from pyteomics import pepxml, mzid
 import venn
