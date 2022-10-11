@@ -539,8 +539,18 @@ def run():
     logging.info('Started')
     
     logging.debug(args)
-
-    for sample_num in ['s1', 's2'] :
+    
+    mode = None
+    if not args['s2'] :
+        sample_nums = ['s1']
+        logging.info('mode = feature matching')
+        mode = 'feature matching'
+    else :
+        sample_nums = ['s1', 's2']
+        logging.info('mode = diffacto')
+        mode = 'diffacto'
+    
+    for sample_num in sample_nums :
         if args[sample_num] :
             if type(args[sample_num]) is str :
                 args[sample_num] = [x.strip()+'.mzML' for x in re.split(r'\.mzML|\.mzml|\.MZML' , args[sample_num], )][:-1]
@@ -570,14 +580,6 @@ def run():
         if args[suf] :
             suffixes.append(suf)
     
-    mode = None
-    if not args['s2'] :
-        logging.info('mode = feature matching')
-        mode = 'feature matching'
-    else :
-        logging.info('mode = diffacto')
-        mode = 'diffacto'
-    
     k = len(suffixes)
     if k == 0 :
         logging.critical('At least one feature detector shoud be given!')
@@ -593,7 +595,7 @@ def run():
     samples = []
     samples_dict = {}
     mzML_paths = []
-    for sample_num in ['s1', 's2']:
+    for sample_num in sample_nums :
         samples_dict[sample_num] = []
         for z in args[sample_num]:
             mzML_paths.append(z)
@@ -610,7 +612,7 @@ def run():
     else :
         logging.warning('trying to find *%s files in the same directory as .mzML', PSMs_suf)
         dir_name = os.path.abspath(mzML_paths[0]).split(samples[0])[0]
-    for sample_num in ['s1', 's2'] :
+    for sample_num in sample_nums :
         PSMs_full_dict[sample_num] = {}
         for sample in samples_dict[sample_num] :
             i = 0
@@ -716,8 +718,8 @@ def run():
         if os.path.exists(args['feature_folder']) :
             feature_path = args['feature_folder']
         else :
-            logging.critical('path to feature files folder does not exist')
-            return -1
+            logging.warning('Path to feature files folder does not exist. Creating it.')
+            feature_path =  args['feature_folder']
     else :
         if args['PSM_folder'] :
             dir_name = args['PSM_folder']
@@ -974,7 +976,7 @@ def run():
     # обрезает табличку до пептид + белок + значение интенсивности
                 df1 = df1[['peptide', 'protein', label]]
 
-                logging.debug('Starting merging %s', sample)
+                logging.debug('Start merging %s', sample)
                 if peptide_df is False :
                     peptide_df = df1
                 else:
@@ -993,7 +995,7 @@ def run():
             peptide_df = peptide_df[cols]
             peptide_df.fillna(value='')
 
-            s = out_directory + '/diffacto/' + args['outPept'].replace('.txt', '_' + suf + '.txt')
+            s = os.path.join(out_directory, 'diffacto', args['outPept'].replace('.txt', '_' + suf + '.txt'))
             peptide_df.to_csv(s, sep=',')
             paths['DiffPept'][suf] = s
 
@@ -1003,7 +1005,7 @@ def run():
 
             paths['DiffSampl'][suf] = os.path.join(diffacto_folder, args['outSampl'].replace('.txt', '_' + suf + '.txt'))
             out = open( paths['DiffSampl'][suf] , 'w')
-            for sample_num in ['s1', 's2']:
+            for sample_num in sample_nums :
                 if args[sample_num] :
                     for sample in samples_dict[sample_num] :
                         label = sample
