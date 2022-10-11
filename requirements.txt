@@ -1,0 +1,8 @@
+pyteomics
+matplotlib
+scipy
+numpy
+pandas
+matplotlib-venn
+venn
+lxml
