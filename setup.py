@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 '''
-setup.py file for multi_features_diffacto_analisys
+setup.py file for iqmma
 '''
 import os
 from setuptools import setup, find_packages, Extension
