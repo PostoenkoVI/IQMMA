@@ -10,7 +10,7 @@ version = open('VERSION').readline().strip()
 
 
 setup(
-    name                 = 'multi_features_diffacto_analisys',
+    name                 = 'iqmma',
     version              = version,
     description          = '''A MS1 feature mapping for MS2 spectra identifications.''',
     long_description     = (''.join(open('README.md').readlines())),
@@ -26,5 +26,5 @@ setup(
                             'Topic :: Scientific/Engineering :: Physics'],
     license              = 'License :: OSI Approved :: Apache Software License',
     packages             = find_packages(),
-    entry_points         = {'console_scripts': ['multi_feature_diffacto_analysis = multi_feature_diffacto_analysis.multi_feature_diffacto_analysis:run',]}
+    entry_points         = {'console_scripts': ['iqmma = iqmma.iqmma:run',]}
     )
