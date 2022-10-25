@@ -461,7 +461,7 @@ def run():
     parser.add_argument('-mixed', help='whether to reanalyze mixed intensities (1) or not (0)')
     parser.add_argument('-venn', help='whether to plot venn diagrams (1) or not (0)')
     parser.add_argument('-pept_intens', help='max_intens - as intensity for peptide would be taken maximal intens between charge states; summ_intens - as intensity for peptide would be taken sum of intens between charge states; z-attached - each charge state would be treated as independent peptide')
-    parser.add_argument('-choice', help='method how to choose right intensities for peptide. 0 - default order and min Nan values, 1 - min Nan and min of sum CV, 2 - min Nan and min of max CV, 3 - min Nan and min of squared sum CV, 4 - default order with filling Nan values between programs (if using this variant -norm MUST be applied)')
+    parser.add_argument('-choice', help='method how to choose right intensities for peptide. 0 - default order and min Nan values, 1 - min Nan and min of sum CV, 2 - min Nan and min of max CV, 3 - min Nan and min of squared sum CV, 4 - default order with filling Nan values between programs (if using this variant -norm MUST be applied), 5 - min Nan and min of squared sum of corrected CV')
     parser.add_argument('-norm', help='normalization method for intensities. Can be 1 - median or 0 - no normalization')
     parser.add_argument('-isotopes', help='monoisotope error')
     
@@ -1159,23 +1159,44 @@ def run():
             suf_cols = [sample + short_suffixes[suf] for sample in samples_dict['s2']]
             col = 's2_'+'not_NaN' + short_suffixes[suf]
             merge_df[ col ] = merge_df[suf_cols].notna().sum(axis = 1)
-            
+        
+        mean_int_to_corr_cv = {}
+        for sample_num in ['s1', 's2'] :
+            mean_int_to_corr_cv[sample_num] = {}
+            for suf in suffixes :
+                cols = [x for x in merge_df.columns if x.startswith(tuple(samples_dict[sample_num])) and x.endswith(short_suffixes[suf])]
+                s = 0
+                n = 0
+                for col in cols :
+                    s += merge_df[col].sum()
+                    n += merge_df[col].notna().sum()
+                mean_int_to_corr_cv[sample_num][suf] = s/n
+
         for suf in suffixes :
             for sample_num in ['s1', 's2'] :
                 cols = [x for x in merge_df.columns if x.startswith(tuple(samples_dict[sample_num])) and x.endswith(short_suffixes[suf])]
+                
                 mean_col = sample_num+'_'+'mean'+short_suffixes[suf]
                 merge_df[ mean_col ] = merge_df.loc[:, cols].mean(axis=1)
+                
                 std_col = sample_num+'_'+'std'+short_suffixes[suf]
                 merge_df[ std_col ] = merge_df.loc[:, cols].std(axis=1)
+                
                 cv_col = sample_num+'_'+'cv'+short_suffixes[suf]
                 merge_df[ cv_col ] = merge_df[ std_col ] / merge_df[ mean_col ]
-                av = merge_df[ cv_col ].mean()
+
                 not_na_col = sample_num+'_'+'not_NaN' + short_suffixes[suf]
+                av = merge_df[ cv_col ].mean()
                 merge_df[ cv_col ].mask( merge_df[ not_na_col ] == 1 , other = av, inplace = True)
-            
+
+                corr_cv_col = 'corr_'+sample_num+'_'+'cv'+short_suffixes[suf]
+                min_mean = min([mean_int_to_corr_cv[sample_num][s] for s in suffixes])
+                merge_df[ corr_cv_col ] = merge_df[ cv_col ] * np.sqrt(mean_int_to_corr_cv[sample_num][suf] / min_mean)
+                
             merge_df[ 'summ_cv'+short_suffixes[suf] ] = merge_df['s1_cv'+short_suffixes[suf]] + merge_df['s2_cv'+short_suffixes[suf]]
             merge_df[ 'max_cv'+short_suffixes[suf] ] = merge_df.loc[:, ['s1_cv'+short_suffixes[suf], 's2_cv'+short_suffixes[suf]] ].max(axis=1)
             merge_df[ 'sq_summ_cv'+short_suffixes[suf] ] = np.sqrt(merge_df['s1_cv'+short_suffixes[suf]]**2 + merge_df['s2_cv'+short_suffixes[suf]]**2)
+            merge_df[ 'corr_sq_cv'+short_suffixes[suf] ] = np.sqrt(merge_df['corr_s1_cv'+short_suffixes[suf]]**2 + merge_df['corr_s2_cv'+short_suffixes[suf]]**2)
             merge_df.drop(columns=[ 's1_mean'+short_suffixes[suf], 's2_mean'+short_suffixes[suf], 
                                     's1_std'+short_suffixes[suf], 's2_std'+short_suffixes[suf], 
                                     's1_'+'not_NaN' + short_suffixes[suf], 's2_'+'not_NaN' + short_suffixes[suf], 
@@ -1194,7 +1215,7 @@ def run():
             merge_df['tool'] = merge_df['tool'].apply(lambda x: x.split('_')[-1])
 
         # min number of Nan values and min summ or max CV
-        elif args['choice'] == 1 or args['choice'] == 2 or args['choice'] == 3 :
+        elif args['choice'] == 1 or args['choice'] == 2 or args['choice'] == 3 or args['choice'] == 5 :
             num_na_cols = ['num_NaN' + short_suffixes[suf] for suf in suffixes]
             merge_df['NaN_border'] = merge_df[num_na_cols].min(axis=1)
             if args['choice'] == 1 :
@@ -1203,6 +1224,8 @@ def run():
                 cv = 'max_cv'
             elif args['choice'] == 3 :
                 cv = 'sq_summ_cv'
+            elif args['choice'] == 5 :
+                cv = 'corr_sq_cv'
             for suf in suffixes :
                 merge_df['masked_CV' + short_suffixes[suf] ] = merge_df[ cv + short_suffixes[suf] ].mask(merge_df[ 'num_NaN' + short_suffixes[suf] ] > merge_df['NaN_border'])
             masked_CV_cols = ['masked_CV' + short_suffixes[suf] for suf in suffixes]
