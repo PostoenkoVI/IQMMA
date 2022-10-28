@@ -1171,8 +1171,10 @@ def run():
                     s += merge_df[col].sum()
                     n += merge_df[col].notna().sum()
                 mean_int_to_corr_cv[sample_num][suf] = s/n
-
+        
+        med_cv_to_corr = {}
         for suf in suffixes :
+            med_cv_to_corr[suf] = {}
             for sample_num in ['s1', 's2'] :
                 cols = [x for x in merge_df.columns if x.startswith(tuple(samples_dict[sample_num])) and x.endswith(short_suffixes[suf])]
                 
@@ -1188,10 +1190,16 @@ def run():
                 not_na_col = sample_num+'_'+'not_NaN' + short_suffixes[suf]
                 av = merge_df[ cv_col ].mean()
                 merge_df[ cv_col ].mask( merge_df[ not_na_col ] == 1 , other = av, inplace = True)
+                med_cv_to_corr[suf][sample_num] = merge_df[ cv_col ].median()
 
+        for suf in suffixes :
+            for sample_num in ['s1', 's2'] :
+                cols = [x for x in merge_df.columns if x.startswith(tuple(samples_dict[sample_num])) and x.endswith(short_suffixes[suf])]
+
+                cv_col = sample_num+'_'+'cv'+short_suffixes[suf]
                 corr_cv_col = 'corr_'+sample_num+'_'+'cv'+short_suffixes[suf]
-                min_mean = min([mean_int_to_corr_cv[sample_num][s] for s in suffixes])
-                merge_df[ corr_cv_col ] = merge_df[ cv_col ] * np.sqrt(mean_int_to_corr_cv[sample_num][suf] / min_mean)
+                ref_med = max([med_cv_to_corr[s][sample_num] for s in suffixes])
+                merge_df[ corr_cv_col ] = merge_df[ cv_col ] / (med_cv_to_corr[suf][sample_num] / ref_med)
                 
             merge_df[ 'summ_cv'+short_suffixes[suf] ] = merge_df['s1_cv'+short_suffixes[suf]] + merge_df['s2_cv'+short_suffixes[suf]]
             merge_df[ 'max_cv'+short_suffixes[suf] ] = merge_df.loc[:, ['s1_cv'+short_suffixes[suf], 's2_cv'+short_suffixes[suf]] ].max(axis=1)
