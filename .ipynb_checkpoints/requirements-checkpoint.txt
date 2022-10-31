@@ -1,7 +1,0 @@
-pyteomics
-matplotlib
-scipy
-numpy
-pandas
-venn
-lxml
