@@ -180,7 +180,11 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False) :
     mi = b2[np.argmax(H2)]
     s = (max(t) - min(t))/6
     noise = min(H2)
-    popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
+    if (sort == 'rt1') or (sort == 'rt2'):
+        popt, pcov = curve_fit(noisygaus, b2[1:][b2[1:]>0], H2[b2[1:]>0], p0=[m, mi, s, noise])
+    else:
+        popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
+    # popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
     logging.debug(popt)
     mass_shift, mass_sigma = popt[1], abs(popt[2])
 
@@ -348,7 +352,10 @@ def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,
         else:
             ar.append(sorted(value, key=lambda x: abs(x[sort]))[0][parameters])
 
-    mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss)
+    if parameters == 'rt1' or parameters == 'rt2':
+        mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss, 'rt1')
+    else:
+        mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss, 'mz')
     return mean, sigma
 
 
