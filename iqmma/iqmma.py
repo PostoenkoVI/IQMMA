@@ -148,7 +148,7 @@ def opt_bin(ar, border=16) :
     return bwidth
 
 
-def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False) :
+def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, sort = 'mz') :
 
     bwidth = opt_bin(true_md)
     bbins = np.arange(mass_left, mass_right, bwidth)
