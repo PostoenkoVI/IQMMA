@@ -208,6 +208,8 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
     rtStart_array_ms1 = df_features['rtStart'].values
     rtEnd_array_ms1 = df_features['rtEnd'].values
     feature_intensityApex = df_features['intensityApex'].values
+    
+    feature_id = df_features.index #new
 
     check_charge = False
     if 'charge' in df_features.columns:
@@ -295,7 +297,10 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
                             rt_diff1 = psm_rt - rtS
                             rt_diff2 = rtE - psm_rt
                             intensity = feature_intensityApex[idx_current_ime]
+                            index = feature_id[idx_current_ime] #new
+                            
                             cur_result = {'idx_current_ime': idx_current_ime,
+                                         'id_feature': index, #new
                                          'mz_diff_ppm':mz_diff_ppm,
                                          'rt_diff':rt_diff,
                                          'im_diff': 0,
@@ -392,12 +397,13 @@ def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_r
     end_isotope_ = list(np.add.accumulate(np.array(results_isotope_end))*100)
     logging.info(end_isotope_)
     df_features_dict = {}
-    intensity_dict = {}
+    # intensity_dict = {}
+    intensity_dict = defaultdict(float)
     for kk,v in results_isotope.items():
         # df_features_dict[kk] = v[0]['idx_current_ime']
         # intensity_dict[kk] = v[0]['intensity']
         tmp = sorted(v, key=lambda x: 1e6*idx[x['i']] + np.sqrt( (x['mz_diff_ppm']/sigma_mz)**2 + min([0, (x['rt1']/sigma_rt1)**2, (x['rt2']/sigma_rt2)**2])))[0]
-        df_features_dict[kk] = tmp['idx_current_ime']
+        df_features_dict[kk] = tmp['id_feature'] #new
         intensity_dict[kk] = tmp['intensity']
     ser1 = pd.DataFrame(df_features_dict.values(), index = df_features_dict.keys(), columns = ['df_features'])
     ser2 = pd.DataFrame(df_features_dict.keys(), index = df_features_dict.keys(), columns = ['spectrum'])
@@ -857,12 +863,10 @@ def run():
                 feats = feats.sort_values(by='mz')
 
                 logging.info(suf + ' features ' + sample + '\n' + 'START')
-                temp_df = optimized_search_with_isotope_error_(feats, PSM,isotopes_array=args['isotopes'] )[0]
+                temp_df = optimized_search_with_isotope_error_(feats, PSM, isotopes_array=args['isotopes'])[0]
+                
                 # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2])[0]
                 # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = 0,sigma_mz = 10,mean_im = False,sigma_im = False, isotopes_array=[0,])[0]
-
-                
-
                 median = temp_df['feature_intensityApex'].median()
                 temp_df['med_norm_feature_intensityApex'] = temp_df['feature_intensityApex']/median
                 cols = list(temp_df.columns)
