@@ -22,7 +22,7 @@ from venn import venn
 from scipy.stats import pearsonr, scoreatpercentile, percentileofscore
 from scipy.optimize import curve_fit
 import logging
-
+import pickle
 
 class WrongInputError(NotImplementedError):
     pass
@@ -175,13 +175,13 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, sort = 'mz
     bwidth = opt_bin(t)
     bbins = np.arange(min(t), max(t) , bwidth)
     H2, b2 = np.histogram(t, bins=bbins)
-
+    # pickle.dump(t, open('/home/leyla/project1/mbr/t.pickle', 'wb'))
     m = max(H2)
     mi = b2[np.argmax(H2)]
     s = (max(t) - min(t))/6
     noise = min(H2)
     if (sort == 'rt1') or (sort == 'rt2'):
-        popt, pcov = curve_fit(noisygaus, b2[1:][b2[1:]>0], H2[b2[1:]>0], p0=[m, mi, s, noise])
+        popt, pcov = curve_fit(noisygaus, b2[1:][b2[1:]>=mi], H2[b2[1:]>=mi], p0=[m, mi, s, noise])
     else:
         popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
     # popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
@@ -237,13 +237,13 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
     results = defaultdict(list)
 
     if sigma1 is False:
-        max_rtstart_err = max(rtStart_array_ms1)/150
+        max_rtstart_err = max(rtStart_array_ms1)/25
         interval1 = max_rtstart_err
     else:
         interval1 = 3*sigma1
 
     if sigma2 is False:
-        max_rtend_err = max(rtEnd_array_ms1)/150
+        max_rtend_err = max(rtEnd_array_ms1)/25
         interval2 = max_rtend_err
     else:
         interval2 = 3*sigma2
@@ -400,9 +400,11 @@ def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_r
     # intensity_dict = {}
     intensity_dict = defaultdict(float)
     for kk,v in results_isotope.items():
-        # df_features_dict[kk] = v[0]['idx_current_ime']
-        # intensity_dict[kk] = v[0]['intensity']
         tmp = sorted(v, key=lambda x: 1e6*idx[x['i']] + np.sqrt( (x['mz_diff_ppm']/sigma_mz)**2 + min([0, (x['rt1']/sigma_rt1)**2, (x['rt2']/sigma_rt2)**2])))[0]
+        # for i in tmp:
+        #     df_features_dict[kk] = i['id_feature']
+        #     intensity_dict[kk] += i['intensity']#*(1 if i['intensity'] >=tmp[0]['intensity'] else 0)
+        # tmp = sorted(v, key=lambda x: -x['intensity'])[0]
         df_features_dict[kk] = tmp['id_feature'] #new
         intensity_dict[kk] = tmp['intensity']
     ser1 = pd.DataFrame(df_features_dict.values(), index = df_features_dict.keys(), columns = ['df_features'])
@@ -414,6 +416,26 @@ def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_r
     return features_for_psm_db,end_isotope_, cnt.keys()
 # end_isotope_, cnt.keys(),
 
+## match between run
+
+def mbr(feat,II,PSMs_full_paths, PSM_path):
+    II = II.sort_values(by = 'feature_intensityApex', ascending = False)
+    II['pep_charge'] = II['peptide'] + II['assumed_charge'].map(str)
+    II = II.drop_duplicates(subset = 'pep_charge')
+    match_between_runs_copy01 = II.copy()
+    match_between_runs_copy01['pep_charge'] = np.where(~np.isnan(match_between_runs_copy01['feature_intensityApex']), match_between_runs_copy01['pep_charge'], np.nan)
+    match_between_runs_copy01 = match_between_runs_copy01[match_between_runs_copy01['pep_charge'].notna()]
+    found_set = set(match_between_runs_copy01['pep_charge'])
+    for j in PSMs_full_paths:
+        if PSM_path != j:
+            psm_j_fdr = read_PSMs(j)
+            psm_j_fdr['pep_charge'] = psm_j_fdr['peptide'] + psm_j_fdr['assumed_charge'].map(str)
+            psm_j_fdr = psm_j_fdr[psm_j_fdr['pep_charge'].apply(lambda x: x not in found_set)]
+            III = optimized_search_with_isotope_error_(feat, psm_j_fdr, isotopes_array=[0,1,-1,2,-2])[0]
+            III = III.sort_values(by = 'feature_intensityApex', ascending = False)
+            III = III.drop_duplicates(subset = 'pep_charge')
+            II = pd.concat([II, III])
+    return II
 
 def run():
     parser = argparse.ArgumentParser(
@@ -484,6 +506,8 @@ def run():
     parser.add_argument('-normDiff', help='normalization method for Diffacto. Can be average, median, GMM or None', )
     parser.add_argument('-impute_threshold', help='impute_threshold for missing values fraction', )
     parser.add_argument('-min_samples', help='minimum number of samples for peptide usage', )
+    parser.add_argument('-mbr', help='match between runs', )
+
 #    parser.add_argument('-version', action='version', version='%s' % (pkg_resources.require("scavager")[0], ))
     args = vars(parser.parse_args())
 
@@ -851,8 +875,7 @@ def run():
     else :
         matching_path = os.path.join(out_directory, 'feats_matched')
     subprocess.call(['mkdir', '-p', matching_path])
-
-#    suffixes = ['dino', 'bio', 'bio2', 'openMS'] - уже заданы
+    
     logging.info('Start matching features')
     for PSM_path, sample in zip(PSMs_full_paths, samples) :
         PSM = read_PSMs(PSM_path)
@@ -863,9 +886,11 @@ def run():
                 feats = feats.sort_values(by='mz')
 
                 logging.info(suf + ' features ' + sample + '\n' + 'START')
-                temp_df = optimized_search_with_isotope_error_(feats, PSM, isotopes_array=args['isotopes'])[0]
+                # temp_df = optimized_search_with_isotope_error_(feats, PSM, isotopes_array=args['isotopes'])[0]
                 
-                # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2])[0]
+                temp_df = optimized_search_with_isotope_error_(feats, PSM, isotopes_array=[0,1,-1,2,-2])[0]
+                if args['mbr']:
+                    temp_df = mbr(feats, temp_df, PSMs_full_paths, PSM_path) 
                 # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = 0,sigma_mz = 10,mean_im = False,sigma_im = False, isotopes_array=[0,])[0]
                 median = temp_df['feature_intensityApex'].median()
                 temp_df['med_norm_feature_intensityApex'] = temp_df['feature_intensityApex']/median
@@ -879,8 +904,9 @@ def run():
                 
         temp_df = None    
     logging.info('Matching features for PSMs done')
-
     
+
+
     ## Подготовка и прогон Диффакто 1
 
 
