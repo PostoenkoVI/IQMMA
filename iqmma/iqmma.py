@@ -33,6 +33,45 @@ class WrongInputError(NotImplementedError):
 class EmptyFileError(ValueError):
     pass
 
+def call_Dinosaur(path_to_fd, mzml_path, outdir, outname, str_of_other_args ) :
+    other_args = ['--' + x.strip().replace(' ', '=') for x in str_of_other_args.split('--')]
+    final_args = [path_to_fd, mzml_path, '--outDir='+outdir, '--outName='+outname, ] + other_args
+    final_args = list(filter(lambda x: False if x=='--' else True, final_args))
+    process = subprocess.Popen(final_args, 
+                               stdout=subprocess.PIPE, 
+                               stderr=subprocess.STDOUT)
+    with process.stdout:
+        log_subprocess_output(process.stdout)
+    exitscore = process.wait()
+    os.rename(os.path.join(outdir, outname + '.features.tsv'),  os.path.join(outdir, outname) )
+    return exitscore
+
+def call_Biosaur2(path_to_fd, mzml_path, outpath, str_of_other_args) :
+    other_args = [x.strip() for x in str_of_other_args.split(' ')]
+    final_args = [path_to_fd, mzml_path, '-o', outpath, ] + other_args
+    final_args = list(filter(lambda x: False if x=='' else True, final_args))
+    process = subprocess.Popen(final_args, 
+                               stdout=subprocess.PIPE, 
+                               stderr=subprocess.STDOUT)
+    with process.stdout:
+        log_subprocess_output(process.stdout)
+    exitscore = process.wait()
+    return exitscore
+
+def call_OpenMS(path_to_fd, mzml_path, outpath, str_of_other_args) :
+    other_args = [x.strip() for x in str_of_other_args.split(' ')]
+    final_args = [path_to_fd, 
+                  '-in', mzml_path, 
+                  '-out', outpath, 
+                  ] + other_args
+    final_args = list(filter(lambda x: False if x=='' else True, final_args))
+    process = subprocess.Popen(final_args, 
+                               stdout=subprocess.PIPE, 
+                               stderr=subprocess.STDOUT)
+    with process.stdout:
+        log_subprocess_output(process.stdout)
+    exitscore = process.wait()
+    return exitscore
 
 def gaus(x, a, x0, sigma):
     return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2))
@@ -71,13 +110,7 @@ def generate_users_output(diffacto_out={},
             table = table[abs(table['log2_FC']) > border_fc]
         else :
             logging.info('Dynamic fold change treshold is applied')
-            t = table['log2_FC'].to_numpy()
-            w = opt_bin(t)
-            bbins = np.arange(min(t), max(t), w)
-            H2, b2 = np.histogram(t, bins=bbins)
-            m, mi, s = max(H2), b2[np.argmax(H2)], (max(t) - min(t))/6
-            popt, pcov = curve_fit(gaus, b2[1:], H2, p0=[m, mi, s])
-            shift, sigma = popt[1], abs(popt[2])
+            shift, sigma = table['log2_FC'].median(), table['log2_FC'].std()
             right_fc_treshold = shift + 3*sigma
             left_fc_treshold = shift - 3*sigma
             table = table.query('`log2_FC` >= @right_fc_treshold or `log2_FC` <= @right_fc_treshold')
@@ -124,12 +157,11 @@ def diffacto_call(diffacto_path='',
                   out_path='',
                   peptide_path='',
                   sample_path='',
-                  diffacto_norm='median',
-                  impute_threshold=0.25,
                   min_samples=3,
                   psm_dfs_dict={},
                   samples_dict={},
                   write_peptides=False,
+                  str_of_other_args=''
                   ) :
     # samples_dict = {
     #     's1': ['rep_name1', 'rep_name2', ...]
@@ -160,7 +192,7 @@ def diffacto_call(diffacto_path='',
                 on = ['peptide', 'protein', ],
                 )
         df0.fillna(value='', inplace=True)
-        df0.rename(columns={'protein':'proteins'})
+        df0.rename(columns={'protein':'proteins'}, inplace=True)
         df0.to_csv(peptide_path, sep=',', index=False)
         logging.info('DONE')
     else :
@@ -176,11 +208,14 @@ def diffacto_call(diffacto_path='',
     out.close()
     logging.info('DONE')
     
+    other_args = [x.strip() for x in str_of_other_args.split(' ')]
+    final_args = ['python3', diffacto_path, 
+                  '-i', peptide_path, 
+                  '-out', out_path, 
+                  '-samples', sample_path, ] + ['-min_samples', min_samples] + other_args
+    final_args = list(filter(lambda x: False if x=='' else True, final_args))
     logging.info('Diffacto START')
-    process = subprocess.Popen(['python3', diffacto_path, '-i', peptide_path,
-                    '-out', out_path, '-samples', sample_path,
-                    '-normalize', diffacto_norm, '-impute_threshold', impute_threshold, 
-                    '-min_samples', min_samples], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    process = subprocess.Popen(final_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     with process.stdout:
         log_subprocess_output(process.stdout)
     exitscore = process.wait()
@@ -230,7 +265,9 @@ def mix_intensity(input_dict,
                                   how = 'outer', 
                                   on = ['peptide', 'protein', ], 
                                   suffixes = sufs,
+                                  copy=False,
                                  )
+        temp_df = False
     rename_dct = {}
     for sample in samples :
         rename_dct[sample] = sample + '_' + suf_dict[suffixes[0]]
@@ -908,14 +945,18 @@ def run():
     parser.add_argument('-outPept', help='name of output diffacto peptides file (important: .txt)')
     parser.add_argument('-outSampl', help='name of output diffacto samples file (important: .txt)', )
     parser.add_argument('-outDiff', help='name of diffacto output file (important: .txt)', )
-    parser.add_argument('-normDiff', help='normalization method for Diffacto. Can be average, median, GMM or None', )
-    parser.add_argument('-impute_threshold', help='impute_threshold for missing values fraction', )
     parser.add_argument('-min_samples', help='minimum number of samples for peptide usage', )
     
     parser.add_argument('-mbr', help='match between runs', )
     parser.add_argument('-pval_treshold', help='P-value treshold for reliable differetially expressed proteins', )
     parser.add_argument('-fc_treshold', help='Fold change treshold for reliable differetially expressed proteins', )
     parser.add_argument('-dynamic_fc_treshold', help='whether to apply dynamically calculated treshold (1) or not and use static -fc_treshold (0) ',)
+    
+    parser.add_argument('-diffacto_args', help='String of additional arguments to submit into Diffacto (hole string in single quotes in command line) except: -i, -out, -samples, -min_samples; default: "-normalize median -impute_threshold 0.25" ')
+    parser.add_argument('-dino_args', help='String of additional arguments to submit into Dinosaur (hole string in single quotes in command line) except: --outDir --outName; default: ""')
+    parser.add_argument('-bio_args', help='String of additional arguments to submit into Biosaur (hole string in single quotes in command line) except: -o; default: ""')
+    parser.add_argument('-bio2_args', help='String of additional arguments to submit into Biosaur2 (hole string in single quotes in command line) except: -o; default: "-hvf 1000 -minlh 3"')
+    parser.add_argument('-openms_args', help='String of additional arguments to submit into OpenMSFeatureFinder (hole string in single quotes in command line) except: -in, -out; default: "-algorithm:isotopic_pattern:charge_low 2 -algorithm:isotopic_pattern:charge_high 7"')
 #    parser.add_argument('-version', action='version', version='%s' % (pkg_resources.require("scavager")[0], ))
     args = vars(parser.parse_args())
 
@@ -1125,7 +1166,7 @@ def run():
     out_directory = args['outdir']
     sample_1 = args['s1']
     sample_2 = args['s2']
-    
+
     args['overwrite_features'] = int( args['overwrite_features'])
     args['overwrite_matching'] = int( args['overwrite_matching'])
     args['overwrite_first_diffacto'] = int( args['overwrite_first_diffacto'])
@@ -1157,9 +1198,6 @@ def run():
     logging.debug('overwrite_features = %s', args['overwrite_features'])
     logging.debug('overwrite_first_diffacto = %s', args['overwrite_first_diffacto'])
     logging.debug('overwrite_matching = %d', args['overwrite_matching'])
-    
-#    subprocess.call(['python3', args['dif'], '-i', args['peptides'], '-samples', args['samples'], '-out',\
-#     args['out'], '-normalize', args['norm'], '-impute_threshold', args['impute_threshold'], '-min_samples', args['min_samples']])
 
     subprocess.call(['mkdir', '-p', out_directory])
 
@@ -1188,10 +1226,7 @@ def run():
             outName = sample + '_features_' + 'dino' + '.tsv'
             if args['overwrite_features'] == 1 or not os.path.exists(os.path.join(feature_path, outName)) :
                 logging.info('\n' + 'Writing features' + ' dino ' + sample + '\n')
-                process = subprocess.Popen([args['dino'], '--outDir='+ feature_path, '--outName='+ outName, path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                with process.stdout:
-                    log_subprocess_output(process.stdout)
-                exitscore = process.wait()
+                exitscore = call_Dinosaur(args['dino'], path, feature_path, outName, args['dino_args'])
                 logging.debug(exitscore)
                 os.rename(os.path.join(feature_path, outName + '.features.tsv'),  os.path.join(feature_path, outName) )
             else :
@@ -1207,13 +1242,10 @@ def run():
             outPath = os.path.join(feature_path, sample + '_features_bio.tsv')
             if args['overwrite_features'] == 1 or not os.path.exists(outPath) :
                 logging.info('\n' + 'Writing features ' + ' bio ' + sample + '\n')
-                process = subprocess.Popen([args['bio'], path, '-o', outPath, '-hvf', '1000', '-minlh', '3'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                with process.stdout:
-                    log_subprocess_output(process.stdout)
-                exitscore = process.wait()
+                exitscore = call_Biosaur2(args['bio'], path, outPath, args['bio_args'])
                 logging.debug(exitscore)
             else :
-                logging.info('\n' + 'Not ovetwriting features ' + ' bio ' + sample + '\n')
+                logging.info('\n' + 'Not overwriting features ' + ' bio ' + sample + '\n')
 
 ### Biosaur2
 
@@ -1225,13 +1257,10 @@ def run():
             outPath = os.path.join(feature_path, sample + '_features_bio2.tsv')
             if args['overwrite_features'] == 1 or not os.path.exists(outPath) :
                 logging.info('\n' + 'Writing features ' + ' bio2 ' + sample + '\n')
-                process = subprocess.Popen([args['bio2'], path, '-o', outPath, '-hvf', '1000', '-minlh', '3'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                with process.stdout:
-                    log_subprocess_output(process.stdout)
-                exitscore = process.wait()
+                exitscore = call_Biosaur2(args['bio2'], path, outPath, args['bio2_args'])
                 logging.debug(exitscore)
             else :
-                logging.info('\n' + 'Not ovetwriting features ' + ' bio2 ' + sample + '\n')
+                logging.info('\n' + 'Not overwriting features ' + ' bio2 ' + sample + '\n')
 
             
 ### OpenMS
@@ -1246,11 +1275,7 @@ def run():
             out_path = os.path.join(feature_path, 'openMS', sample + '.featureXML')
             if args['overwrite_features'] == 1 or not os.path.exists(out_path) :
                 logging.info('\n' + 'Writing .featureXML ' + ' openMS ' + sample + '\n')
-
-                process = subprocess.Popen([args['openMS'], '-in', path, '-out', out_path, '-algorithm:isotopic_pattern:charge_low', '2', '-algorithm:isotopic_pattern:charge_high', '7'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                with process.stdout:
-                    log_subprocess_output(process.stdout)
-                exitscore = process.wait()
+                exitscore = call_OpenMS(args['openMS'], path, out_path, args['openms_args'])
                 logging.debug(exitscore)
             else :
                 logging.info('\n' + 'Not ovetwriting .featureXML ' + ' openMS ' + sample + '\n')
@@ -1398,12 +1423,11 @@ def run():
                                           out_path = paths['DiffOut'][suf],
                                           peptide_path = paths['DiffPept'][suf],
                                           sample_path = paths['DiffSampl'][suf],
-                                          diffacto_norm = args['normDiff'],
-                                          impute_threshold = args['impute_threshold'],
                                           min_samples = args['min_samples'],
                                           psm_dfs_dict = psms_dict,
                                           samples_dict = samples_dict,
                                           write_peptides=True,
+                                          str_of_other_args = args['diffacto_args']
                                          )  
             logging.info('Done Diffacto run with %s', suf)
             psms_dict = False
@@ -1462,11 +1486,10 @@ def run():
                                       out_path = paths['DiffOut'][suf],
                                       peptide_path = paths['DiffPept'][suf],
                                       sample_path = paths['DiffSampl'][suf],
-                                      diffacto_norm = args['normDiff'],
-                                      impute_threshold = args['impute_threshold'],
                                       min_samples = args['min_samples'],
                                       psm_dfs_dict = {},
                                       samples_dict = samples_dict,
+                                      str_of_other_args = args['diffacto_args']
                                      )
             logging.info('Done Diffacto run with {} with exitscore {}'.format(suf, exitscore))
             
