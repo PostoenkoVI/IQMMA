@@ -192,7 +192,6 @@ def diffacto_call(diffacto_path='',
                 on = ['peptide', 'protein', ],
                 )
         df0.fillna(value='', inplace=True)
-        df0.rename(columns={'protein':'proteins'}, inplace=True)
         df0.to_csv(peptide_path, sep=',', index=False)
         logging.info('DONE')
     else :
