@@ -102,18 +102,19 @@ def generate_users_output(diffacto_out={},
             flag = False
         bonferroni = pval_treshold/len(table)
         table = table[ table['S/N'] > 0.01 ]
-        table = table[table['P(PECA)'] < bonferroni][['Protein', 'log2_FC']]
-        
+    
         if not dynamic_fc_treshold :
+            table = table[table['P(PECA)'] < bonferroni][['Protein', 'log2_FC']]
             logging.info('Static fold change treshold is applied')
             border_fc = abs(np.log2(fc_treshold))
             table = table[abs(table['log2_FC']) > border_fc]
         else :
-            logging.info('Dynamic fold change treshold is applied')
-            shift, sigma = table['log2_FC'].median(), table['log2_FC'].std()
+            shift, sigma = table[table['P(PECA)'] > bonferroni]['log2_FC'].median(), table[table['P(PECA)'] > bonferroni]['log2_FC'].std()
             right_fc_treshold = shift + 3*sigma
             left_fc_treshold = shift - 3*sigma
-            table = table.query('`log2_FC` >= @right_fc_treshold or `log2_FC` <= @right_fc_treshold')
+            logging.info('Dynamic fold change treshold is applied {} {}'.format(left_fc_treshold, right_fc_treshold, ))
+            table = table[table['P(PECA)'] < bonferroni][['Protein', 'log2_FC']]
+            table = table.query('`log2_FC` >= @right_fc_treshold or `log2_FC` <= @left_fc_treshold')
         comp_df = comp_df.merge(table, how='outer', on='Protein', suffixes = (None, '_'+suf))
     comp_df.rename(columns={'log2_FC': 'log2_FC_'+suffixes[0] }, inplace=True )
     comp_df.dropna(how = 'all', subset=['log2_FC_' + suf for suf in suffixes], inplace=True)
@@ -1394,7 +1395,7 @@ def run():
         paths['DiffSampl'] = {}
         paths['DiffOut'] = {}
         for suf in suffixes:
-            logging.info('Starting Diffacto run with %s', suf)
+            logging.info('Charge states processing %s', suf)
             psms_dict = {}
             for sample in samples:
                 logging.debug('Starting %s', sample)
