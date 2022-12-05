@@ -22,7 +22,6 @@ from venn import venn
 from scipy.stats import pearsonr, scoreatpercentile, percentileofscore
 from scipy.optimize import curve_fit
 import logging
-import pickle
 
 class WrongInputError(NotImplementedError):
     pass
@@ -156,14 +155,24 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, sort = 'mz
     b1 = b1 + bwidth
     b1 = b1[:-1]
 
-    H_marg = 2*np.median(H1)
     i = np.argmax(H1)
     max_k = len(H1) - 1
     j = i
     k = i
-    while j >= 0 and H1[j] > H_marg:
+    while j > 0 and H1[j] > 0:
         j -= 1
-    while k <= max_k and H1[k] > H_marg:
+    while k < max_k and H1[k] > 0:
+        k += 1 
+    
+    
+    H_marg = 2*np.median(H1[j:k])
+    i = np.argmax(H1)
+    max_k = len(H1) - 1
+    j = i
+    k = i
+    while j > 0 and H1[j] > H_marg:
+        j -= 1
+    while k < max_k and H1[k] > H_marg:
         k += 1            
     w = (k-j)
     t = []
@@ -175,7 +184,6 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, sort = 'mz
     bwidth = opt_bin(t)
     bbins = np.arange(min(t), max(t) , bwidth)
     H2, b2 = np.histogram(t, bins=bbins)
-    # pickle.dump(t, open('/home/leyla/project1/mbr/t.pickle', 'wb'))
     m = max(H2)
     mi = b2[np.argmax(H2)]
     s = (max(t) - min(t))/6
