@@ -26,6 +26,6 @@ setup(
                             'Topic :: Scientific/Engineering :: Physics'],
     license              = 'License :: OSI Approved :: Apache Software License',
     packages         = ['iqmma', ],
-    package_data     = {'iqmma': ['default.ini', ]},
+    package_data     = {'iqmma': ['default.ini', 'utils.ini']},
     entry_points         = {'console_scripts': ['iqmma = iqmma.iqmma:run',]},
     )
