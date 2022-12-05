@@ -109,7 +109,13 @@ def generate_users_output(diffacto_out={},
             border_fc = abs(np.log2(fc_treshold))
             table = table[abs(table['log2_FC']) > border_fc]
         else :
-            shift, sigma = table[table['P(PECA)'] > bonferroni]['log2_FC'].median(), table[table['P(PECA)'] > bonferroni]['log2_FC'].std()
+            t = table[table['P(PECA)'] > bonferroni][['Protein', 'log2_FC']]
+            w = opt_bin(t)
+            bbins = np.arange(min(t), max(t), w)
+            H2, b2 = np.histogram(t, bins=bbins)
+            m, mi, s = max(H2), b2[np.argmax(H2)], (max(z) - min(z))/6
+            popt, pcov = curve_fit(gaus, b2[1:], H2, p0=[m, mi, s])
+            shift, sigma = popt[1], abs(popt[2])
             right_fc_treshold = shift + 3*sigma
             left_fc_treshold = shift - 3*sigma
             logging.info('Dynamic fold change treshold is applied {} {}'.format(left_fc_treshold, right_fc_treshold, ))
