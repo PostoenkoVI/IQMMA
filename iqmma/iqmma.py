@@ -321,6 +321,7 @@ def run():
     args['isotopes'] = [int(isoval.strip()) for isoval in args['isotopes'].split(',')]
     args['pval_treshold'] = float(args['pval_treshold'])
     args['fc_treshold'] = float(args['fc_treshold'])
+    args['mbr'] = int(args['mbr'])
     if args['dynamic_fc_treshold'] == '1' :
         args['dynamic_fc_treshold'] = True
     elif args['dynamic_fc_treshold'] == '0' :
