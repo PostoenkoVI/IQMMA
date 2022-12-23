@@ -22,7 +22,6 @@ from venn import venn
 from scipy.stats import pearsonr, scoreatpercentile, percentileofscore
 from scipy.optimize import curve_fit
 import logging
-
 class WrongInputError(NotImplementedError):
     pass
 
@@ -147,25 +146,14 @@ def opt_bin(ar, border=16) :
     return bwidth
 
 
-def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, sort = 'mz') :
+def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False) :
 
     bwidth = opt_bin(true_md)
     bbins = np.arange(mass_left, mass_right, bwidth)
     H1, b1 = np.histogram(true_md, bins=bbins)
-    b1 = b1 + bwidth
-    b1 = b1[:-1]
+    noise_fraction = np.median(H1) * len(H1) / H1.sum()
 
-    i = np.argmax(H1)
-    max_k = len(H1) - 1
-    j = i
-    k = i
-    while j > 0 and H1[j] > 0:
-        j -= 1
-    while k < max_k and H1[k] > 0:
-        k += 1 
-    
-    
-    H_marg = 2*np.median(H1[j:k])
+    H_marg = np.median(H1)
     i = np.argmax(H1)
     max_k = len(H1) - 1
     j = i
@@ -178,21 +166,20 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, sort = 'mz
     t = []
 #        logging.debug('Интервал значений ' + str(b1[ll]-bwidth) + ' ' + str(b1[rr]))
     for el in true_md :
-        if el >= b1[i]-bwidth*2*(i-j) and el <= b1[i]+bwidth*2*(k-i) :
+        if el >= b1[i]-bwidth*(i-j) and el <= b1[i]+bwidth*(k-i) :
             t.append(el)
 
-    bwidth = opt_bin(t)
+    bwidth = opt_bin(t, border=min(8,8*0.5/noise_fraction))
+
     bbins = np.arange(min(t), max(t) , bwidth)
     H2, b2 = np.histogram(t, bins=bbins)
     m = max(H2)
     mi = b2[np.argmax(H2)]
     s = (max(t) - min(t))/6
-    noise = min(H2)
-    if (sort == 'rt1') or (sort == 'rt2'):
-        popt, pcov = curve_fit(noisygaus, b2[1:][b2[1:]>=mi], H2[b2[1:]>=mi], p0=[m, mi, s, noise])
-    else:
-        popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
-    # popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
+    noise = np.median(H2)
+
+    popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
+    
     logging.debug(popt)
     mass_shift, mass_sigma = popt[1], abs(popt[2])
 
@@ -366,9 +353,9 @@ def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,
             ar.append(sorted(value, key=lambda x: abs(x[sort]))[0][parameters])
 
     if parameters == 'rt1' or parameters == 'rt2':
-        mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss, 'rt1')
+        mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss)
     else:
-        mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss, 'mz')
+        mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss)
     return mean, sigma
 
 
@@ -396,7 +383,7 @@ def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_r
 
     # print(mean_rt1, sigma_rt1,mean_rt2, sigma_rt2,mean_mz, sigma_mz )    
 
-    results_isotope = total(df_features = df_features,psms =psms,mean1 = mean_rt1, sigma1 = sigma_rt1,mean2 = mean_rt2, sigma2 = sigma_rt2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, isotopes_array=isotopes_array)
+    results_isotope = total(df_features = df_features,psms =psms,mean1 = mean_rt1, sigma1 = 3*sigma_rt1,mean2 = mean_rt2, sigma2 = 3*sigma_rt2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, isotopes_array=isotopes_array)
     
     results_isotope_end = []
     cnt = Counter([z[0]['i'] for z in results_isotope.values()])
@@ -409,10 +396,11 @@ def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_r
     intensity_dict = defaultdict(float)
     for kk,v in results_isotope.items():
         tmp = sorted(v, key=lambda x: 1e6*idx[x['i']] + np.sqrt( (x['mz_diff_ppm']/sigma_mz)**2 + min([0, (x['rt1']/sigma_rt1)**2, (x['rt2']/sigma_rt2)**2])))[0]
-        # for i in tmp:
+        # for i in tmp[::-1]:
         #     df_features_dict[kk] = i['id_feature']
         #     intensity_dict[kk] += i['intensity']#*(1 if i['intensity'] >=tmp[0]['intensity'] else 0)
         # tmp = sorted(v, key=lambda x: -x['intensity'])[0]
+        
         df_features_dict[kk] = tmp['id_feature'] #new
         intensity_dict[kk] = tmp['intensity']
     ser1 = pd.DataFrame(df_features_dict.values(), index = df_features_dict.keys(), columns = ['df_features'])
@@ -737,6 +725,7 @@ def run():
     args['venn'] = int( args['venn'])
     args['choice'] = int( args['choice'])
     args['norm'] = int( args['norm'])
+    args['mbr'] = int(args['mbr'])
     args['isotopes'] = [int(isoval.strip()) for isoval in args['isotopes'].split(',')]
     
     logging.debug('PSMs_full_paths: %s', PSMs_full_paths)
