@@ -10,19 +10,19 @@ Using pip:
 
 ## Usage
 
-`iqmma` has two mods. It can be quantitation workflow with generating features using multiple tools, matching them on peptides, and two Diffacto quantitation stages (separated and mixed, where algorithm is choosing best intensties for each peptide between different feature detections). Another way of usage is to stop after peptide-feature matching to apply any other user's quantitation algorithm on matched intensities.
+`iqmma` has two working mods. First of all, it can be quantitation workflow with generating peptide features using multiple tools, matching them on peptides, and two Diffacto quantitation stages (separated and mixed, where the algorithm is choosing the best intensties for each peptide between different feature detections). The second one is stopping after peptide-feature matching to allow user to apply any other quantitation approach on matched intensities.
 
-For `iqmma` to work each mzML file should have related PSM file which name starts with the name of mzML.
+For `iqmma` to work properly each mzML file must have related PSM file which name starts with the name of mzML.
 For basic usage all PSMs and mzML files should be stored in the same directory, otherwise -PSM_folder parameter must be applied. All PSMs files must be *PSM_full.tsv tables obtained from Scavager output (https://github.com/markmipt/scavager).
-Basic for quantitation mode:
+Basic command for quantitation mode:
 
     iqmma -bio2 path_to_Biosaur2 -dino path_to_Dinosaur -openms path_to_openMS -diff path_to_Diffacto -s1 paths_to_mzml_files_from_sample_1_*.mzML -s2 paths_to_mzml_files_from_sample_2_*.mzML -outdir out_dir
 
-Basic for matching peptide intensities: (all mzml files goes into first sample without any differences, no quantitation applied)
+Basic command for matching peptide intensities: (all mzml files goes into first sample without any differences, no quantitation applied)
 
     iqmma -bio2 path_to_Biosaur2 -dino path_to_Dinosaur -openms path_to_openMS -diff path_to_Diffacto -s1 paths_to_all_mzml_files_*.mzML -outdir out_path
 
-Or both of them could be used with config file for an advanced usage:
+Or both mods could be used with config file for an advanced usage and configuration:
 
     iqmma -cfg path_to_config_file -cfg_category name_of_category_in_cfg
     
