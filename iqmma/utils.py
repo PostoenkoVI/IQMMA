@@ -154,6 +154,7 @@ def generate_users_output(diffacto_out={},
             table = table[abs(table['log2_FC']) > border_fc]
         else:
             t = table[table['P(PECA)'] > bonferroni]['log2_FC'].to_numpy()
+            t = t[~np.isnan(t)]
             w = opt_bin(t)
             bbins = np.arange(min(t), max(t), w)
             H2, b2 = np.histogram(t, bins=bbins)
