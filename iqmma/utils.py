@@ -262,6 +262,7 @@ def diffacto_call(diffacto_path='',
                   '-out', out_path, 
                   '-samples', sample_path, ] + ['-min_samples', min_samples] + other_args
     final_args = list(filter(lambda x: False if x=='' else True, final_args))
+    final_args = [str(x) for x in final_args]
     logging.info('Diffacto START')
     process = subprocess.Popen(final_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     with process.stdout:
