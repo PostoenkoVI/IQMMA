@@ -1,7 +1,7 @@
 pyteomics
 matplotlib
 scipy
-numpy
+numpy==1.23.1
 pandas
 venn
 lxml
