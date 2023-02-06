@@ -12,7 +12,7 @@ import ast
 import re
 from os import listdir
 import logging
-from utils import call_Dinosaur, call_Biosaur2, call_OpenMS, gaus, noisygaus, opt_bin, generate_users_output, diffacto_call, mix_intensity, charge_states_intensity_processing, read_PSMs, calibrate_mass, total, found_mean_sigma, optimized_search_with_isotope_error_, mbr
+from .utils import read_cgf, write_example_cfg, call_Dinosaur, call_Biosaur2, call_OpenMS, gaus, noisygaus, opt_bin, generate_users_output, diffacto_call, mix_intensity, charge_states_intensity_processing, read_PSMs, calibrate_mass, total, found_mean_sigma, optimized_search_with_isotope_error_, mbr
 
 
 class WrongInputError(NotImplementedError):
@@ -25,124 +25,104 @@ class EmptyFileError(ValueError):
 
 def run():
     parser = argparse.ArgumentParser(
-        description = 'run multiple feature detection matching and diffacto for scavager results',
+        description = 'Proteomics quantitation workflow',
         epilog = '''
-    Example usage
+    Example of usage
     -------------
     (prefered way)
-    $ multi_features_diffacto_analisys.py -cfg /path_to/default.ini
-        
-    or 
-    $ multi_features_diffacto_analisys.py -mzML sample1_1.mzML sample1_n.mzML sample2_1.mzML sample1_n.mzML 
-                                          -s1 sample1_1_PSMs_full.tsv sample1_n_PSMs_full.tsv 
-                                          -s2 sample2_1_PSMs_full.tsv sample2_n_PSMs_full.tsv
-                                          -sampleNames sample1_1 sample1_n sample2_1 sample2_n
-                                          -outdir ./script_out
-                                          -dif path_to/diffacto
-                                          -dino /home/bin/dinosaur
-                                          -bio /home/bin/biosaur
-                                          -bio2 /home/bin/biosaur2
-                                          -openMS path_to_openMS
-                                          -venn 1
-                                          -mixed 1
-                                          -overwrite_features 1
-                                          -overwrite_matching 1
+    Basic command for quantitation mode:
+
+    $ iqmma -bio2 path_to_Biosaur2 
+            -dino path_to_Dinosaur 
+            -openms path_to_openMS 
+            -dif path_to_Diffacto 
+            -s1 paths_to_mzml_files_from_sample_1_*.mzML 
+            -s2 paths_to_mzml_files_from_sample_2_*.mzML
+
+    Basic command for matching peptide intensities: (all mzml files goes into first sample without any differences, no quantitation applied)
+
+    $ iqmma -bio2 path_to_Biosaur2 
+            -dino path_to_Dinosaur 
+            -openms path_to_openMS 
+            -dif path_to_Diffacto -s1 paths_to_all_mzml_files_*.mzML -outdir out_path
+    
+    Or both mods could be used with config file for an advanced usage and configuration:
+
+    $ iqmma -cfg path_to_config_file -cfg_category name_of_category_in_cfg
                                           
     -------------
     ''',
         formatter_class = argparse.ArgumentDefaultsHelpFormatter, fromfile_prefix_chars='@')
     
-    parser.add_argument('-logs', help='level of logging, (DEBUG, INFO, WARNING, ERROR, CRITICAL)', )
-    parser.add_argument('-log_path', help='path to logging file', )
-    parser.add_argument('-cfg', help='path to config .ini file')
-    parser.add_argument('-cfg_category', help='name of category to prioritize in the .ini file, default: DEFAULT')
-    parser.add_argument('-dif', help='path to Diffacto')
+    parser.add_argument('-logs', nargs='?', help='level of logging, (DEBUG, INFO, WARNING, ERROR, CRITICAL)', type=str, default='INFO', const='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL', 'NOTSET'])
+    parser.add_argument('-log_path', nargs='?', help='path to logging file', type=str, default='./iqmma.log', const='./iqmma.log')
+    parser.add_argument('-cfg', nargs='?', help='path to config .ini file', type=str, default='', const='')
+    parser.add_argument('-cfg_category', nargs='?', help='name of category to prioritize in the .ini file, default: DEFAULT', type=str, default='DEFAULT', const='DEFAULT')
+    parser.add_argument('-example_cfg', nargs='?', help='Path to create example config .ini file or not if not stated', type=str, default='', const='')
+    parser.add_argument('-dif', nargs='?', help='path to Diffacto', type=str, default='', const='')
 #    parser.add_argument('-scav2dif', help='path to scav2diffacto')
-    parser.add_argument('-s1', nargs='+', help='input mzML files for sample 1 (also file names are the keys for searching other needed files)')
-    parser.add_argument('-s2', nargs='+', help='input mzML files for sample 2 (also file names are the keys for searching other needed files)')
+    parser.add_argument('-s1', nargs='+', help='input mzML files for sample 1 (also file names are the keys for searching other needed files)', type=str, default='', )
+    parser.add_argument('-s2', nargs='*', help='input mzML files for sample 2 (also file names are the keys for searching other needed files)', type=str, default='', )
 #    parser.add_argument('-sampleNames', nargs='+', help='short names for samples for inner structure of results')
-    parser.add_argument('-PSM_folder', help='path to the folder with PSMs files')
-    parser.add_argument('-PSM_format', help='format or suffix to search PSMs files (may be PSMs_full.tsv or identipy.pep.xml for example)')
-    parser.add_argument('-pept_folder', help='path to folder with files with peptides filtered on certain FDR (default: searching for them near PSMs)')
-    parser.add_argument('-prot_folder', help='path to folder with files with proteins filtered on certain FDR (default: searching for them near PSMs)')
+    parser.add_argument('-PSM_folder', nargs='?', help='path to the folder with PSMs files', type=str, default='', const='')
+    parser.add_argument('-PSM_format', nargs='?', help='format or suffix to search PSMs files (may be PSMs_full.tsv or identipy.pep.xml for example)', type=str, default='PSMs_full.tsv', const='PSMs_full.tsv')
+    parser.add_argument('-pept_folder', nargs='?', help='path to folder with files with peptides filtered on certain FDR (default: searching for them near PSMs)', type=str, default='', const='')
+    parser.add_argument('-prot_folder', nargs='?', help='path to folder with files with proteins filtered on certain FDR (default: searching for them near PSMs)', type=str, default='', const='')
     
-    parser.add_argument('-dino', help='path to Dinosaur')
-    parser.add_argument('-bio', help='path to Biosaur')
-    parser.add_argument('-bio2', help='path to Biosaur2')
-    parser.add_argument('-openMS', help='path to OpenMS feature')
+    parser.add_argument('-dino', nargs='?', help='path to Dinosaur', type=str, default='', const='')
+#    parser.add_argument('-bio', nargs='?', help='path to Biosaur', type=str, default='', const='')
+    parser.add_argument('-bio2', nargs='?', help='path to Biosaur2', type=str, default='', const='')
+    parser.add_argument('-openMS', nargs='?', help='path to OpenMS feature', type=str, default='', const='')
     
-    parser.add_argument('-outdir', help='name of directory to store results')
-    parser.add_argument('-feature_folder', help='directory to store features')
-    parser.add_argument('-matching_folder', help='directory to store matched psm-feature pairs')
-    parser.add_argument('-diffacto_folder', help='directory to store diffacto results')
+    parser.add_argument('-outdir', nargs='?', help='name of directory to store results', type=str, default='', const='')
+    parser.add_argument('-feature_folder', nargs='?', help='directory to store features', type=str, default='', const='')
+    parser.add_argument('-matching_folder', nargs='?', help='directory to store matched psm-feature pairs', type=str, default='', const='')
+    parser.add_argument('-diffacto_folder', nargs='?', help='directory to store diffacto results', type=str, default='', const='')
     
-    parser.add_argument('-overwrite_features', help='whether to overwrite existed features files (flag == 1) or use them (flag == 0)')
-    parser.add_argument('-overwrite_matching', help='whether to overwrite existed matched files (flag == 1) or use them (flag == 0)')
-    parser.add_argument('-overwrite_first_diffacto', help='whether to overwrite existed diffacto files (flag == 1) or use them (flag == 0)')
-    parser.add_argument('-mixed', help='whether to reanalyze mixed intensities (1) or not (0)')
-    parser.add_argument('-venn', help='whether to plot venn diagrams (1) or not (0)')
-    parser.add_argument('-pept_intens', help='max_intens - as intensity for peptide would be taken maximal intens between charge states; summ_intens - as intensity for peptide would be taken sum of intens between charge states; z-attached - each charge state would be treated as independent peptide')
-    parser.add_argument('-choice', help='method how to choose right intensities for peptide. 0 - default order and min Nan values, 1 - min Nan and min of sum CV, 2 - min Nan and min of max CV, 3 - min Nan and min of squared sum CV, 4 - default order with filling Nan values between programs (if using this variant -norm MUST be applied), 5 - min Nan and min of squared sum of corrected CV')
-    parser.add_argument('-norm', help='normalization method for intensities. Can be 1 - median or 0 - no normalization')
-    parser.add_argument('-isotopes', help='monoisotope error')
+    parser.add_argument('-overwrite_features', nargs='?', help='whether to overwrite existed features files (flag == 1) or use them (flag == 0)', type=int, default=0, const=0, choices=[0, 1])
+    parser.add_argument('-overwrite_matching', nargs='?', help='whether to overwrite existed matched files (flag == 1) or use them (flag == 0)', type=int, default=1, const=1, choices=[0, 1])
+    parser.add_argument('-overwrite_first_diffacto', nargs='?', help='whether to overwrite existed diffacto files (flag == 1) or use them (flag == 0)', type=int, default=1, const=1, choices=[0, 1])
+    parser.add_argument('-mixed', nargs='?', help='whether to reanalyze mixed intensities (1) or not (0)', type=int, default=1, const=1, choices=[0, 1])
+    parser.add_argument('-venn', nargs='?', help='whether to plot venn diagrams (1) or not (0)', type=int, default=1, const=1, choices=[0, 1])
+    parser.add_argument('-pept_intens', nargs='?', help='max_intens - as intensity for peptide would be taken maximal intens between charge states; summ_intens - as intensity for peptide would be taken sum of intens between charge states; z-attached - each charge state would be treated as independent peptide', type=str, default='z-attached', const='z-attached', choices=['z-attached', 'summ_intens', 'max_intens'])
+    parser.add_argument('-choice', nargs='?', help='method how to choose right intensities for peptide. 0 - default order and min Nan values, 1 - min Nan and min of sum CV, 2 - min Nan and min of max CV, 3 - min Nan and min of squared sum CV, 4 - min Nan and min of squared sum of corrected CV', type=int, default=4, const=4, choices=[0, 1, 2, 3, 4,])
+    parser.add_argument('-norm', nargs='?', help='normalization method for intensities. Can be 1 - median or 0 - no normalization', type=int, default=0, const=0, choices=[0, 1])
+    parser.add_argument('-isotopes', help='monoisotope error', nargs='+', type=int, default=[0,1,-1,2,-2])
     
-    parser.add_argument('-outPept', help='name of output diffacto peptides file (important: .txt)')
-    parser.add_argument('-outSampl', help='name of output diffacto samples file (important: .txt)', )
-    parser.add_argument('-outDiff', help='name of diffacto output file (important: .txt)', )
-    parser.add_argument('-min_samples', help='minimum number of samples for peptide usage', )
+    parser.add_argument('-outPept', nargs='?', help='name of output diffacto peptides file (important: .txt)', type=str, default='peptides.txt', const='peptides.txt')
+    parser.add_argument('-outSampl', nargs='?', help='name of output diffacto samples file (important: .txt)', type=str, default='sample.txt', const='sample.txt')
+    parser.add_argument('-outDiff', nargs='?', help='name of diffacto output file (important: .txt)', type=str, default='diffacto_out.txt', const='diffacto_out.txt')
+    parser.add_argument('-min_samples', nargs='?', help='minimum number of samples for peptide usage, -1 means that half of the given number of files would be used', type=int, default=-1, const=-1)
     
-    parser.add_argument('-mbr', help='match between runs', )
-    parser.add_argument('-pval_treshold', help='P-value treshold for reliable differetially expressed proteins', )
-    parser.add_argument('-fc_treshold', help='Fold change treshold for reliable differetially expressed proteins', )
-    parser.add_argument('-dynamic_fc_treshold', help='whether to apply dynamically calculated treshold (1) or not and use static -fc_treshold (0) ',)
+    parser.add_argument('-mbr', nargs='?', help='match between runs (1 - on, 0 - off)', type=int, default=0, const=0, choices=[0, 1])
+    parser.add_argument('-pval_threshold', nargs='?', help='P-value threshold for reliable differetially expressed proteins', type=float, default=0.05, const=0.05)
+    parser.add_argument('-fc_threshold', nargs='?', help='Fold change threshold for reliable differetially expressed proteins', type=float, default=2., const=2.)
+    parser.add_argument('-dynamic_fc_threshold', nargs='?', help='whether to apply dynamically calculated threshold (1) or not and use static -fc_threshold (0) ', type=int, default=1, const=1, choices=[0, 1])
     
-    parser.add_argument('-diffacto_args', help='String of additional arguments to submit into Diffacto (hole string in single quotes in command line) except: -i, -out, -samples, -min_samples; default: "-normalize median -impute_threshold 0.25" ')
-    parser.add_argument('-dino_args', help='String of additional arguments to submit into Dinosaur (hole string in single quotes in command line) except: --outDir --outName; default: ""')
-    parser.add_argument('-bio_args', help='String of additional arguments to submit into Biosaur (hole string in single quotes in command line) except: -o; default: ""')
-    parser.add_argument('-bio2_args', help='String of additional arguments to submit into Biosaur2 (hole string in single quotes in command line) except: -o; default: "-hvf 1000 -minlh 3"')
-    parser.add_argument('-openms_args', help='String of additional arguments to submit into OpenMSFeatureFinder (hole string in single quotes in command line) except: -in, -out; default: "-algorithm:isotopic_pattern:charge_low 2 -algorithm:isotopic_pattern:charge_high 7"')
+    parser.add_argument('-diffacto_args', nargs='?', help='String of additional arguments to submit into Diffacto (hole string in single quotes in command line) except: -i, -out, -samples, -min_samples; default: "-normalize median -impute_threshold 0.25" ', type=str, default='-normalize median -impute_threshold 0.25', const='')
+    parser.add_argument('-dino_args', nargs='?', help='String of additional arguments to submit into Dinosaur (hole string in single quotes in command line) except: --outDir --outName; default: ""', type=str, default='', const='')
+#    parser.add_argument('-bio_args', nargs='?', help='String of additional arguments to submit into Biosaur (hole string in single quotes in command line) except: -o; default: ""', type=str, default='', const='')
+    parser.add_argument('-bio2_args', nargs='?', help='String of additional arguments to submit into Biosaur2 (hole string in single quotes in command line) except: -o; default: "-hvf 1000 -minlh 3"', type=str, default='-hvf 1000 -minlh 3', const='')
+    parser.add_argument('-openms_args', nargs='?', help='String of additional arguments to submit into OpenMSFeatureFinder (hole string in single quotes in command line) except: -in, -out; default: "-algorithm:isotopic_pattern:charge_low 2 -algorithm:isotopic_pattern:charge_high 7"', type=str, default='-algorithm:isotopic_pattern:charge_low 2 -algorithm:isotopic_pattern:charge_high 7', const='')
 #    parser.add_argument('-version', action='version', version='%s' % (pkg_resources.require("scavager")[0], ))
     args = vars(parser.parse_args())
-
-    default_config = configparser.ConfigParser(allow_no_value=True, empty_lines_in_values=False, )
-    default_config.optionxform = lambda option: option
-    d_cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'default.ini')
-    if os.path.exists(d_cfg_path) :
-        default_config.read(d_cfg_path)
-    else :
-        logging.critical('default config file does not exist: ' + d_cfg_path)
-        return -1
-    options = dict(default_config['DEFAULT'])
-    
+    default_config = vars(parser.parse_args([]))
+    users_config = {}
     if args['cfg'] :
-        config = configparser.ConfigParser(allow_no_value=True, empty_lines_in_values=False, )
-        config.optionxform = lambda option: option
         if os.path.exists(args['cfg']) :
-            config.read(args['cfg'])
+            if args['cfg_category'] :
+                s = read_cgf(args['cfg'] , args['cfg_category'] )
+            else :
+                s = read_cgf( args['cfg'], default_config['cfg_category'] )
+            users_config = vars(parser.parse_args(s))
         else :
             logging.critical('path to config file does not exist')
             return -1
-        if args['cfg_category'] :
-            cat = args['cfg_category']
-        else :
-            cat = options['cfg_category']
-                
-        tmp = {k: v for k, v in dict(config[cat]).items() if v != ''}
-        options.update( tmp )
     
-    tmp = {k: v for k, v in args.items() if v is not None}
-    args.clear()
-    args.update(tmp)
-    tmp.clear()
-    
-    options.update(args)
-    
-    for k, v in options.items() :
-        if v == '' :
-            options.update( {k: None} )
-    
-    args = options.copy()
-    options.clear()
+    if users_config :
+        for k in users_config :
+            if users_config[k] != default_config[k] and args[k] == default_config[k] :
+                args.update({k: users_config[k]})
     
     loglevel = args['logs']
     if args['log_path'] :
@@ -162,6 +142,12 @@ def run():
     logging.getLogger('matplotlib').setLevel(logging.ERROR)
     
     logging.info('Started')
+    
+    if args['example_cfg'] :
+        p = os.path.abspath(args['example_cfg'])
+        if os.path.exists(p.rsplit('/', maxsplit=1)[0]) or os.path.exists(p) :
+            write_example_cfg(args['example_cfg'], default_config)
+            logging.info('Example cfg created')
     
     logging.debug(args)
     
@@ -185,6 +171,7 @@ def run():
                 logging.critical('invalid {} input'.format(sample_num))
                 return -1
     
+    
 #    print(args['s1'].split())
 
     if not args['dif'] :
@@ -194,10 +181,6 @@ def run():
 #     if not args['scav2dif'] :
 #         logging.warning('path to scav2diffacto.py file is required')
 #         return -1
-    
-    if not args['outdir'] :
-        logging.critical('path to output directory is required')
-        return -1
     
     arg_suff = ['dino', 'bio', 'bio2', 'openMS']
     suffixes = []
@@ -226,6 +209,9 @@ def run():
             mzML_paths.append(z)
             samples.append(z.split('/')[-1].replace('.mzML', ''))
             samples_dict[sample_num].append(z.split('/')[-1].replace('.mzML', ''))
+            
+    if args['min_samples'] == -1 :
+        args['min_samples'] = int(len(samples)/2)
     
     logging.debug('samples_dict = ' + str(samples_dict))
 
@@ -250,7 +236,13 @@ def run():
                 logging.critical('sample ' + sample + ' PSM file not found')
                 return -1
     logging.debug(PSMs_full_dict)
-
+    
+    if not args['outdir'] :
+        logging.info('Path to output directory is not specified. Using input files directory instead.')
+        args['outdir'] = os.path.abspath(mzML_paths[0]).split(samples[0])[0]
+    else :
+        logging.info('Results are stored at {}'.format(args[outdir]))
+    
     mzML_dict = {}
     for sample, mzML in zip(samples, mzML_paths) :
         mzML_dict[sample] = mzML
@@ -311,23 +303,24 @@ def run():
     sample_1 = args['s1']
     sample_2 = args['s2']
 
-    args['overwrite_features'] = int( args['overwrite_features'])
-    args['overwrite_matching'] = int( args['overwrite_matching'])
-    args['overwrite_first_diffacto'] = int( args['overwrite_first_diffacto'])
-    args['mixed'] = int( args['mixed'])
-    args['venn'] = int( args['venn'])
-    args['choice'] = int( args['choice'])
-    args['norm'] = int( args['norm'])
-    args['isotopes'] = [int(isoval.strip()) for isoval in args['isotopes'].split(',')]
-    args['pval_treshold'] = float(args['pval_treshold'])
-    args['fc_treshold'] = float(args['fc_treshold'])
-    if args['dynamic_fc_treshold'] == '1' :
-        args['dynamic_fc_treshold'] = True
-    elif args['dynamic_fc_treshold'] == '0' :
-        args['dynamic_fc_treshold'] = False
-    else :
-        logging.critical('Invalid value for setting: -dynamic_fc_treshold %s', args['dynamic_fc_treshold'])
-        raise ValueError('Invalid value for setting: -dynamic_fc_treshold %s', args['dynamic_fc_treshold'])
+    # args['overwrite_features'] = int( args['overwrite_features'])
+    # args['overwrite_matching'] = int( args['overwrite_matching'])
+    # args['overwrite_first_diffacto'] = int( args['overwrite_first_diffacto'])
+    # args['mixed'] = int( args['mixed'])
+    # args['venn'] = int( args['venn'])
+    # args['choice'] = int( args['choice'])
+    # args['norm'] = int( args['norm'])
+    # args['isotopes'] = [int(isoval.strip()) for isoval in args['isotopes'].split(',')]
+    # args['pval_threshold'] = float(args['pval_threshold'])
+    # args['fc_threshold'] = float(args['fc_threshold'])
+    # args['mbr'] = int(args['mbr'])
+    # if args['dynamic_fc_threshold'] == '1' :
+    #     args['dynamic_fc_threshold'] = True
+    # elif args['dynamic_fc_threshold'] == '0' :
+    #     args['dynamic_fc_threshold'] = False
+    # else :
+    #     logging.critical('Invalid value for setting: -dynamic_fc_threshold %s', args['dynamic_fc_threshold'])
+    #     raise ValueError('Invalid value for setting: -dynamic_fc_threshold %s', args['dynamic_fc_threshold'])
         
     
     logging.debug('PSMs_full_paths: %s', PSMs_full_paths)
@@ -590,9 +583,9 @@ def run():
             diffacto_out = paths['DiffOut'], 
             out_folder = out_directory, 
             plot_venn = plot_venn, 
-            pval_treshold = args['pval_treshold'], 
-            fc_treshold = args['fc_treshold'], 
-            dynamic_fc_treshold = args['dynamic_fc_treshold'], 
+            pval_threshold = args['pval_threshold'], 
+            fc_threshold = args['fc_threshold'], 
+            dynamic_fc_threshold = args['dynamic_fc_threshold'], 
             save = save
         )
         
@@ -647,9 +640,9 @@ def run():
                 diffacto_out = paths['DiffOut'], 
                 out_folder = out_directory, 
                 plot_venn = plot_venn, 
-                pval_treshold = args['pval_treshold'], 
-                fc_treshold = args['fc_treshold'], 
-                dynamic_fc_treshold = args['dynamic_fc_treshold'], 
+                pval_threshold = args['pval_threshold'], 
+                fc_threshold = args['fc_threshold'], 
+                dynamic_fc_threshold = args['dynamic_fc_threshold'], 
                 save = save
             )
             logging.info('Numbers of differentially expressed proteins:')
