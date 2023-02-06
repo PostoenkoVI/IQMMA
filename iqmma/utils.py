@@ -19,8 +19,59 @@ from scipy.optimize import curve_fit
 import logging
 
 
+def read_cgf(file, category) :
+    with open(file, 'r') as ff :
+        f = ff.read()
+    
+    start = int(f.find('['+category+']')) + 2 + len(category)
+    end = min(f.find('\n\n', start), len(f))
+    
+    cfg_string = f[start:end]
+    while '#' in cfg_string :
+        l = cfg_string.find('#')
+        r = cfg_string.find('\n', l) + 2
+        cfg_string = cfg_string[:l] + cfg_string[r:]
+
+    lst_of_strings = cfg_string.lstrip().split('\n')
+    final = []
+    for el in lst_of_strings :
+        if el :
+            key_value = el.split(' = ')
+            if len(key_value) > 1 :
+                key = key_value[0]
+                value = key_value[1]
+            else :
+                key = key_value[0]
+                value = None
+            key = '-' + key
+            final.append(key)
+
+            if value :
+                if not value.startswith('"') :
+                    vals = value.split()
+                    for v in vals :
+                        final.append(v)
+                else :
+                    final.append(value)
+    return final
+
+
+def write_example_cfg(path, dct_args):
+    with open(path, 'w') as f :
+        f.write('#encoding=\'utf-8\'\n')
+        f.write('[DEFAULT]\n')
+        for k, v in dct_args.items() :
+            if type(v) != list :
+                f.write(k + ' = ' + str(v) + '\n')
+            else :
+                f.write(k + ' = ' + ' '.join([str(el) for el in v]) + '\n')
+        f.write('\n[users_category]\n')
+        f.write('# here you can set your parameters\n')
+
+
 def call_Dinosaur(path_to_fd, mzml_path, outdir, outname, str_of_other_args ) :
-    other_args = ['--' + x.strip().replace(' ', '=') for x in str_of_other_args.split('--')]
+    if str_of_other_args :
+        other_args = ['--' + x.strip().replace(' ', '=') for x in str_of_other_args.strip('"').split('--')]
     final_args = [path_to_fd, mzml_path, '--outDir='+outdir, '--outName='+outname, ] + other_args
     final_args = list(filter(lambda x: False if x=='--' else True, final_args))
     process = subprocess.Popen(final_args, 
@@ -33,7 +84,8 @@ def call_Dinosaur(path_to_fd, mzml_path, outdir, outname, str_of_other_args ) :
     return exitscore
 
 def call_Biosaur2(path_to_fd, mzml_path, outpath, str_of_other_args) :
-    other_args = [x.strip() for x in str_of_other_args.split(' ')]
+    if str_of_other_args :
+        other_args = [x.strip() for x in str_of_other_args.strip('"').split(' ')]
     final_args = [path_to_fd, mzml_path, '-o', outpath, ] + other_args
     final_args = list(filter(lambda x: False if x=='' else True, final_args))
     process = subprocess.Popen(final_args, 
@@ -45,7 +97,8 @@ def call_Biosaur2(path_to_fd, mzml_path, outpath, str_of_other_args) :
     return exitscore
 
 def call_OpenMS(path_to_fd, mzml_path, outpath, str_of_other_args) :
-    other_args = [x.strip() for x in str_of_other_args.split(' ')]
+    if str_of_other_args :
+        other_args = [x.strip() for x in str_of_other_args.strip('"').split(' ')]
     final_args = [path_to_fd, 
                   '-in', mzml_path, 
                   '-out', outpath, 
@@ -65,9 +118,9 @@ def gaus(x, a, x0, sigma):
 def generate_users_output(diffacto_out={},
                           out_folder='',
                           plot_venn=True,
-                          pval_treshold=0.05,
-                          fc_treshold=2,
-                          dynamic_fc_treshold=True,
+                          pval_threshold=0.05,
+                          fc_threshold=2,
+                          dynamic_fc_threshold=True,
                           save = True,
                           ) :
     # diffacto_out = {
@@ -86,16 +139,22 @@ def generate_users_output(diffacto_out={},
         if flag :
             comp_df = table[['Protein']]
             flag = False
-        bonferroni = pval_treshold/len(table)
+
+        bonferroni = pval_threshold/len(table)
         table = table[ table['S/N'] > 0.01 ]
+        if len(table[table['P(PECA)'] > bonferroni]['log2_FC']) < 100:
+            logging.info('Low number of proteins for FC dynamic threshold')
+            dynamic_fc_threshold = 0
+            fc_threshold = 0.5
     
-        if not dynamic_fc_treshold :
+        if not dynamic_fc_threshold :
             table = table[table['P(PECA)'] < bonferroni][['Protein', 'log2_FC']]
-            logging.info('Static fold change treshold is applied')
-            border_fc = abs(np.log2(fc_treshold))
+            logging.info('Static fold change threshold is applied')
+            border_fc = fc_threshold
             table = table[abs(table['log2_FC']) > border_fc]
-        else :
+        else:
             t = table[table['P(PECA)'] > bonferroni]['log2_FC'].to_numpy()
+            t = t[~np.isnan(t)]
             w = opt_bin(t)
             bbins = np.arange(min(t), max(t), w)
             H2, b2 = np.histogram(t, bins=bbins)
@@ -103,11 +162,11 @@ def generate_users_output(diffacto_out={},
             noise = min(H2)
             popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
             shift, sigma = popt[1], abs(popt[2])
-            right_fc_treshold = shift + 3*sigma
-            left_fc_treshold = shift - 3*sigma
-            logging.info('Dynamic fold change treshold is applied for {}: {} {}'.format(suf, left_fc_treshold, right_fc_treshold, ))
+            right_fc_threshold = shift + 3*sigma
+            left_fc_threshold = shift - 3*sigma
+            logging.info('Dynamic fold change threshold is applied for {}: {} {}'.format(suf, left_fc_threshold, right_fc_threshold, ))
             table = table[table['P(PECA)'] < bonferroni][['Protein', 'log2_FC']]
-            table = table.query('`log2_FC` >= @right_fc_treshold or `log2_FC` <= @left_fc_treshold')
+            table = table.query('`log2_FC` >= @right_fc_threshold or `log2_FC` <= @left_fc_threshold')
         comp_df = comp_df.merge(table, how='outer', on='Protein', suffixes = (None, '_'+suf))
     comp_df.rename(columns={'log2_FC': 'log2_FC_'+suffixes[0] }, inplace=True )
     comp_df.dropna(how = 'all', subset=['log2_FC_' + suf for suf in suffixes], inplace=True)
@@ -118,7 +177,8 @@ def generate_users_output(diffacto_out={},
         total_de_prots[suf] = comp_df['log2_FC_'+suf].notna().sum()
     
     if save :
-        comp_df.to_csv(os.path.join(out_folder, 'proteins_compare.tsv'), 
+        comp_df.to_csv(os.path.join(out_folder, 'iqmma_results.tsv'), 
+
                        sep='\t',
                        index=False,
                        columns = list(comp_df.columns), 
@@ -207,6 +267,7 @@ def diffacto_call(diffacto_path='',
                   '-out', out_path, 
                   '-samples', sample_path, ] + ['-min_samples', min_samples] + other_args
     final_args = list(filter(lambda x: False if x=='' else True, final_args))
+    final_args = [str(x) for x in final_args]
     logging.info('Diffacto START')
     process = subprocess.Popen(final_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     with process.stdout:
@@ -228,7 +289,7 @@ def diffacto_call(diffacto_path='',
 def mix_intensity(input_dict,
                   samples_dict,
                   choice=4,
-                  suf_dict={'dino':'D', 'bio': 'B', 'bio2':'B2', 'openMS':'O', 'mixed':'M'}, 
+                  suf_dict={'dino':'D', 'bio2':'B2', 'openMS':'O', 'mixed':'M'}, 
                   out_dir=None,
                   default_order=None,
                   to_diffacto=None, 
@@ -575,6 +636,7 @@ def opt_bin(ar, border=16) :
     logging.debug('final num_bins: ' + str(int(num_bins)) + '\t' + 'final max percent per bin: ' + str(round(max_percent, 2)) + '%')
 
     return bwidth
+
 
 
 def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False) :
