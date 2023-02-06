@@ -183,7 +183,7 @@ def run():
 #         logging.warning('path to scav2diffacto.py file is required')
 #         return -1
     
-    arg_suff = ['dino', 'bio', 'bio2', 'openMS']
+    arg_suff = ['dino', 'bio2', 'openMS']
     suffixes = []
     for suf in arg_suff :
         if args[suf] :
@@ -242,7 +242,7 @@ def run():
         logging.info('Path to output directory is not specified. Using input files directory instead.')
         args['outdir'] = os.path.abspath(mzML_paths[0]).split(samples[0])[0]
     else :
-        logging.info('Results are stored at {}'.format(args[outdir]))
+        logging.info('Results are stored at {}'.format(args['outdir']))
     
     mzML_dict = {}
     for sample, mzML in zip(samples, mzML_paths) :
@@ -371,21 +371,6 @@ def run():
             else :
                 logging.info('\n' + 'Not overwriting features ' + ' dino ' + sample + '\n')
 
-### Biosaur
-
-# На выходе добавляет в папку out_directory/features файлы *sample*_features_bio.tsv
-# Важно: опция -hvf 1000 (без нее результаты хуже)
-
-    if args['bio'] :
-        for path, sample in zip(mzML_paths, samples) :
-            outPath = os.path.join(feature_path, sample + '_features_bio.tsv')
-            if args['overwrite_features'] == 1 or not os.path.exists(outPath) :
-                logging.info('\n' + 'Writing features ' + ' bio ' + sample + '\n')
-                exitscore = call_Biosaur2(args['bio'], path, outPath, args['bio_args'])
-                logging.debug(exitscore)
-            else :
-                logging.info('\n' + 'Not overwriting features ' + ' bio ' + sample + '\n')
-
 ### Biosaur2
 
 # На выходе добавляет в папку out_directory/features файлы *sample*_features_bio2.tsv
@@ -454,7 +439,6 @@ def run():
         matching_path = os.path.join(out_directory, 'feats_matched')
     subprocess.call(['mkdir', '-p', matching_path])
 
-#    suffixes = ['dino', 'bio', 'bio2', 'openMS'] - уже заданы
     logging.info('Start matching features')
     for PSM_path, sample in zip(PSMs_full_paths, samples) :
         PSM = read_PSMs(PSM_path)
@@ -608,7 +592,7 @@ def run():
             a = mix_intensity(paths['DiffPept'],
                               samples_dict,
                               choice=args['choice'], 
-                              suf_dict={'dino':'D', 'bio': 'B', 'bio2':'B2', 'openMS':'O', 'mixed':'M'}, 
+                              suf_dict={'dino':'D', 'bio2':'B2', 'openMS':'O', 'mixed':'M'}, 
                               out_dir= charge_faims_intensity_path,
                               default_order= default_order,
                               to_diffacto= to_diffacto, 
