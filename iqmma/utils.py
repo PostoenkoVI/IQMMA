@@ -142,13 +142,17 @@ def generate_users_output(diffacto_out={},
 
         bonferroni = pval_threshold/len(table)
         table = table[ table['S/N'] > 0.01 ]
+        if len(table[table['P(PECA)'] > bonferroni]['log2_FC']) < 100:
+            logging.info('Low number of proteins for FC dynamic threshold')
+            dynamic_fc_threshold = 0
+            fc_threshold = 0.5
     
         if not dynamic_fc_threshold :
             table = table[table['P(PECA)'] < bonferroni][['Protein', 'log2_FC']]
             logging.info('Static fold change threshold is applied')
-            border_fc = abs(np.log2(fc_threshold))
+            border_fc = fc_threshold
             table = table[abs(table['log2_FC']) > border_fc]
-        else :
+        else:
             t = table[table['P(PECA)'] > bonferroni]['log2_FC'].to_numpy()
             w = opt_bin(t)
             bbins = np.arange(min(t), max(t), w)
