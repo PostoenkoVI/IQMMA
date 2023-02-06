@@ -12,6 +12,7 @@ import ast
 import re
 from os import listdir
 import logging
+
 from .utils import read_cgf, write_example_cfg, call_Dinosaur, call_Biosaur2, call_OpenMS, gaus, noisygaus, opt_bin, generate_users_output, diffacto_call, mix_intensity, charge_states_intensity_processing, read_PSMs, calibrate_mass, total, found_mean_sigma, optimized_search_with_isotope_error_, mbr
 
 
@@ -88,7 +89,6 @@ def run():
     parser.add_argument('-choice', nargs='?', help='method how to choose right intensities for peptide. 0 - default order and min Nan values, 1 - min Nan and min of sum CV, 2 - min Nan and min of max CV, 3 - min Nan and min of squared sum CV, 4 - min Nan and min of squared sum of corrected CV', type=int, default=4, const=4, choices=[0, 1, 2, 3, 4,])
     parser.add_argument('-norm', nargs='?', help='normalization method for intensities. Can be 1 - median or 0 - no normalization', type=int, default=0, const=0, choices=[0, 1])
     parser.add_argument('-isotopes', help='monoisotope error', nargs='+', type=int, default=[0,1,-1,2,-2])
-    
     parser.add_argument('-outPept', nargs='?', help='name of output diffacto peptides file (important: .txt)', type=str, default='peptides.txt', const='peptides.txt')
     parser.add_argument('-outSampl', nargs='?', help='name of output diffacto samples file (important: .txt)', type=str, default='sample.txt', const='sample.txt')
     parser.add_argument('-outDiff', nargs='?', help='name of diffacto output file (important: .txt)', type=str, default='diffacto_out.txt', const='diffacto_out.txt')
@@ -104,6 +104,7 @@ def run():
 #    parser.add_argument('-bio_args', nargs='?', help='String of additional arguments to submit into Biosaur (hole string in single quotes in command line) except: -o; default: ""', type=str, default='', const='')
     parser.add_argument('-bio2_args', nargs='?', help='String of additional arguments to submit into Biosaur2 (hole string in single quotes in command line) except: -o; default: "-hvf 1000 -minlh 3"', type=str, default='-hvf 1000 -minlh 3', const='')
     parser.add_argument('-openms_args', nargs='?', help='String of additional arguments to submit into OpenMSFeatureFinder (hole string in single quotes in command line) except: -in, -out; default: "-algorithm:isotopic_pattern:charge_low 2 -algorithm:isotopic_pattern:charge_high 7"', type=str, default='-algorithm:isotopic_pattern:charge_low 2 -algorithm:isotopic_pattern:charge_high 7', const='')
+
 #    parser.add_argument('-version', action='version', version='%s' % (pkg_resources.require("scavager")[0], ))
     args = vars(parser.parse_args())
     default_config = vars(parser.parse_args([]))
@@ -321,6 +322,7 @@ def run():
     # else :
     #     logging.critical('Invalid value for setting: -dynamic_fc_threshold %s', args['dynamic_fc_threshold'])
     #     raise ValueError('Invalid value for setting: -dynamic_fc_threshold %s', args['dynamic_fc_threshold'])
+
         
     
     logging.debug('PSMs_full_paths: %s', PSMs_full_paths)
