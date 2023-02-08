@@ -19,7 +19,7 @@ from scipy.optimize import curve_fit
 import logging
 
 
-def read_cgf(file, category) :
+def read_cfg(file, category) :
     with open(file, 'r') as ff :
         f = ff.read()
     
@@ -34,6 +34,7 @@ def read_cgf(file, category) :
 
     lst_of_strings = cfg_string.lstrip().split('\n')
     final = []
+    keys = []
     for el in lst_of_strings :
         if el :
             key_value = el.split(' = ')
@@ -43,17 +44,18 @@ def read_cgf(file, category) :
             else :
                 key = key_value[0]
                 value = None
+            keys.append(key)
             key = '-' + key
             final.append(key)
 
             if value :
-                if not value.startswith('"') or not value.startswith("'") :
+                if not value.startswith('"') :
                     vals = value.split()
                     for v in vals :
                         final.append(v)
                 else :
                     final.append(value)
-    return final
+    return final, keys
 
 
 def write_example_cfg(path, dct_args):
@@ -148,7 +150,7 @@ def generate_users_output(diffacto_out={},
             fc_threshold = 0.5
     
         if not dynamic_fc_threshold :
-            table = table[table['P(PECA)'] < bonferroni][['Protein', 'log2_FC']]
+            table = table[table['P(PECA)'] < bonferroni][['Protein', 'P(PECA)', 'log2_FC']]
             logging.info('Static fold change threshold is applied')
             border_fc = fc_threshold
             table = table[abs(table['log2_FC']) > border_fc]
@@ -165,10 +167,10 @@ def generate_users_output(diffacto_out={},
             right_fc_threshold = shift + 3*sigma
             left_fc_threshold = shift - 3*sigma
             logging.info('Dynamic fold change threshold is applied for {}: {} {}'.format(suf, left_fc_threshold, right_fc_threshold, ))
-            table = table[table['P(PECA)'] < bonferroni][['Protein', 'log2_FC']]
+            table = table[table['P(PECA)'] < bonferroni][['Protein', 'P(PECA)', 'log2_FC']]
             table = table.query('`log2_FC` >= @right_fc_threshold or `log2_FC` <= @left_fc_threshold')
         comp_df = comp_df.merge(table, how='outer', on='Protein', suffixes = (None, '_'+suf))
-    comp_df.rename(columns={'log2_FC': 'log2_FC_'+suffixes[0] }, inplace=True )
+    comp_df.rename(columns={'log2_FC': 'log2_FC_'+suffixes[0], 'P(PECA)': 'P(PECA)'+suffixes[0] }, inplace=True )
     comp_df.dropna(how = 'all', subset=['log2_FC_' + suf for suf in suffixes], inplace=True)
     # comp_df.loc['Total number', :] = df0.notna().sum(axis=0)
     
