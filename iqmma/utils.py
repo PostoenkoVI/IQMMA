@@ -605,7 +605,7 @@ def opt_bin(ar, border=16) :
     mxp2 = max_percent
     mxp1 = max_percent
     i = 0
-    while max_percent > border or i < 10000 :
+    while max_percent > border and i < 10000 :
         num_bins = num_bins*2
 
         bwidth = (max(ar) - min(ar))/num_bins
@@ -617,7 +617,7 @@ def opt_bin(ar, border=16) :
             mxp1 = max_percent
         i += 1
     i = 0
-    while max_percent < border or i < 10000 :
+    while max_percent < border and i < 10000 :
         if num_bins < 16 :
             num_bins -= 1
         else :
