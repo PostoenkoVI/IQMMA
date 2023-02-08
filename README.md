@@ -7,6 +7,8 @@
 Using pip:
 
     pip install iqmma
+    
+It will install, if necessary, the minimum set (Biosaur2 and Diffacto) for `iqmma` to function. However, additional feature detections will need to be installed manually according to their manuals (see links below).
 
 ## Usage
 
@@ -49,6 +51,7 @@ As an output `iqmma` generates 'feats_matched' dir with .tsv tables that contain
 - Diffacto repo: https://github.com/statisticalbiotechnology/diffacto
 - Dinosaur repo: https://github.com/fickludd/dinosaur
 - Biosaur2 repo: https://github.com/markmipt/biosaur2
+- OpenMS guide: https://abibuilder.cs.uni-tuebingen.de/archive/openms/Documentation/release/latest/html/index.html
 
 - Mailing list: v.i.postoenko@gmail.com, garibova.02@gmail.com
 
