@@ -49,7 +49,7 @@ def read_cfg(file, category) :
             final.append(key)
 
             if value :
-                if not value.startswith('"') :
+                if not value.startswith('"') or not value.startswith("'") :
                     vals = value.split()
                     for v in vals :
                         final.append(v)
