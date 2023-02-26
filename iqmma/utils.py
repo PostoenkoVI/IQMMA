@@ -74,6 +74,8 @@ def write_example_cfg(path, dct_args):
 def call_Dinosaur(path_to_fd, mzml_path, outdir, outname, str_of_other_args ) :
     if str_of_other_args :
         other_args = ['--' + x.strip().replace(' ', '=') for x in str_of_other_args.strip('"').split('--')]
+    else :
+        other_args = ''
     final_args = [path_to_fd, mzml_path, '--outDir='+outdir, '--outName='+outname, ] + other_args
     final_args = list(filter(lambda x: False if x=='--' else True, final_args))
     process = subprocess.Popen(final_args, 
@@ -88,6 +90,8 @@ def call_Dinosaur(path_to_fd, mzml_path, outdir, outname, str_of_other_args ) :
 def call_Biosaur2(path_to_fd, mzml_path, outpath, str_of_other_args) :
     if str_of_other_args :
         other_args = [x.strip() for x in str_of_other_args.strip('"').split(' ')]
+    else :
+        other_args = ''
     final_args = [path_to_fd, mzml_path, '-o', outpath, ] + other_args
     final_args = list(filter(lambda x: False if x=='' else True, final_args))
     process = subprocess.Popen(final_args, 
@@ -101,6 +105,8 @@ def call_Biosaur2(path_to_fd, mzml_path, outpath, str_of_other_args) :
 def call_OpenMS(path_to_fd, mzml_path, outpath, str_of_other_args) :
     if str_of_other_args :
         other_args = [x.strip() for x in str_of_other_args.strip('"').split(' ')]
+    else :
+        other_args = ''
     final_args = [path_to_fd, 
                   '-in', mzml_path, 
                   '-out', outpath, 
