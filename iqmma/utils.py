@@ -234,7 +234,7 @@ def diffacto_call(diffacto_path='',
         samples += samples_dict[s]
     
     if not os.path.exists(diffacto_path) :
-        logging.critical('path to diffacto file is required')
+        logging.critical('Existing path to diffacto file is required')
         return -1
     
     if write_peptides :
@@ -264,7 +264,7 @@ def diffacto_call(diffacto_path='',
     logging.info('DONE')
     
     other_args = [x.strip() for x in str_of_other_args.split(' ')]
-    final_args = ['python3', diffacto_path, 
+    final_args = [diffacto_path, 
                   '-i', peptide_path, 
                   '-out', out_path, 
                   '-samples', sample_path, ] + ['-min_samples', min_samples] + other_args
