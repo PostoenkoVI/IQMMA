@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 from collections import defaultdict, Counter
 import pyteomics
 from matplotlib.ticker import PercentFormatter
-from pyteomics.openms import featurexml
 from pyteomics import pepxml, mzid
 import venn
 from venn import venn
