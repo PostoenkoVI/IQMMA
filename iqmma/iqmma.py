@@ -389,7 +389,6 @@ def run():
                     logging.info('\n' + 'Writing features' + ' dino ' + sample + '\n')
                     exitscore = call_Dinosaur(args['dino'], path, feature_path, outName, args['dino_args'])
                     logging.debug(exitscore)
-                    os.rename(os.path.join(feature_path, outName + '.features.tsv'),  os.path.join(feature_path, outName) )
                 else :
                     logging.info('\n' + 'Not overwriting features ' + ' dino ' + sample + '\n')
         else :
