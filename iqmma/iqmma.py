@@ -4,6 +4,7 @@ import sys
 import configparser
 import pandas as pd
 import numpy as np
+from pyteomics.openms import featurexml
 import copy
 import os
 import errno
