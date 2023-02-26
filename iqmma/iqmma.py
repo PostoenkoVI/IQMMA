@@ -130,8 +130,8 @@ def run():
         args.update({k: console_config[k]})
         
     
-    loglevel = args['logs']
-    numeric_level = getattr(logging, loglevel.upper(), None)
+    loglevel = args['logs'].upper()
+    numeric_level = getattr(logging, loglevel, None)
     if not isinstance(numeric_level, int):
         raise ValueError('Invalid log level: %s' % loglevel)
 
@@ -550,12 +550,13 @@ def run():
             psms_dict = {}
             for sample in samples:
                 logging.debug('Starting %s', sample)
-                if args['logs'] == 'DEBUG' :
+                if loglevel == 'DEBUG' :
                     charge_faims_intensity_path = os.path.join(diffacto_folder, 'charge_faims_intensity')
                     os.makedirs(charge_faims_intensity_path, exist_ok=True)
                     out_path = os.path.join(diffacto_folder, 'charge_faims_intensity', sample+'_'+suf+'.tsv')
                 else :
                     out_path = None
+                    charge_faims_intensity_path = None
                 psms_dict[sample] = charge_states_intensity_processing(
                     paths['feats_matched'][sample][suf],
                     method=args['pept_intens'], 
