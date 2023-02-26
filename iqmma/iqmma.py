@@ -55,7 +55,7 @@ def run():
     ''',
         formatter_class = argparse.ArgumentDefaultsHelpFormatter, fromfile_prefix_chars='@')
     
-    parser.add_argument('-logs', nargs='?', help='level of logging, (DEBUG, INFO, WARNING, ERROR, CRITICAL)', type=str, default='INFO', const='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL', 'NOTSET'])
+    parser.add_argument('-logs', nargs='?', help='level of logging, (DEBUG, INFO, WARNING, ERROR, CRITICAL)', type=str, default='INFO', const='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL', 'NOTSET', 'debug', 'info', 'warning', 'error', 'critical', 'nonset'])
     parser.add_argument('-log_path', nargs='?', help='path to logging file', type=str, default='./iqmma.log', const='./iqmma.log')
     parser.add_argument('-cfg', nargs='?', help='path to config .ini file', type=str, default='', const='')
     parser.add_argument('-cfg_category', nargs='?', help='name of category to prioritize in the .ini file, default: DEFAULT', type=str, default='DEFAULT', const='DEFAULT')
@@ -130,29 +130,40 @@ def run():
         
     
     loglevel = args['logs']
-    if args['log_path'] :
-        lst = args['log_path'].split('/')[:-1]
-        log_directory = '/' + str(os.path.join(*lst))
-        subprocess.call(['mkdir', '-p', log_directory])
-        
     numeric_level = getattr(logging, loglevel.upper(), None)
     if not isinstance(numeric_level, int):
         raise ValueError('Invalid log level: %s' % loglevel)
-    logging.basicConfig(
-        format='%(asctime)s [%(levelname)s]: %(message)s',
-        level=numeric_level,
-        handlers=[  logging.FileHandler(args['log_path'], mode='w', encoding='utf-8'),
-                    logging.StreamHandler(sys.stdout) ]
-    )
+
+    if args['log_path'] :
+        args['log_path'] = os.path.abspath(os.path.normpath(args['log_path']))
+        log_directory = os.path.dirname(args['log_path'])
+        os.makedirs(log_directory, exist_ok=True)
+
+        logging.basicConfig(
+            format='%(asctime)s [%(levelname)s]: %(message)s',
+            level=numeric_level,
+            handlers=[  logging.FileHandler(args['log_path'], mode='w', encoding='utf-8'),
+                        logging.StreamHandler(sys.stdout) ]
+                            )
+    else :
+        logging.basicConfig(
+            format='%(asctime)s [%(levelname)s]: %(message)s',
+            level=numeric_level,
+            handlers=[  logging.StreamHandler(sys.stdout) ]
+                        )
     logging.getLogger('matplotlib').setLevel(logging.ERROR)
     
     logging.info('Started')
     
     if args['example_cfg'] :
-        p = os.path.abspath(args['example_cfg'])
-        if os.path.exists(p.rsplit('/', maxsplit=1)[0]) or os.path.exists(p) :
+        p = os.path.abspath(os.path.normpath(args['example_cfg']))
+        if os.path.exists(os.path.dirname(p)) or os.path.exists(p) :
+            if os.path.exists(p) :
+                logging.info('Example cfg would be overwrited')
             write_example_cfg(args['example_cfg'], default_config)
             logging.info('Example cfg created')
+        else :
+            logging.warning('Invalid path for example cfg creation. Directory does not exist')
     
     logging.debug(args)
     
@@ -169,19 +180,24 @@ def run():
     for sample_num in sample_nums :
         if args[sample_num] :
             if type(args[sample_num]) is str :
-                args[sample_num] = [x.strip()+'.mzML' for x in re.split(r'\.mzML|\.mzml|\.MZML' , args[sample_num], )][:-1]
+                args[sample_num] = [os.path.abspath(os.path.normpath(x.strip()+'.mzML')) for x in re.split(r'\.mzML|\.mzml|\.MZML' , args[sample_num], )][:-1]
             elif type(args[sample_num]) is list :
-                pass
+                args[sample_num] = [os.path.abspath(os.path.normpath(x)) for x in args[sample_num]]
             else :
                 logging.critical('invalid {} input'.format(sample_num))
                 return -1
     
-    
 #    print(args['s1'].split())
 
-    if not args['dif'] :
-        logging.critical('path to diffacto file is required')
-        return -1
+    if mode == 'diffacto' :
+        if not args['dif'] :
+            logging.critical('Path to diffacto executable file is required')
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), args['dif'])
+        elif not os.path.exists(os.path.normpath(args['dif'])) :
+            logging.critical('Path to diffacto executable file does not exist: {}'.format(os.path.normpath(args['dif'])))
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), args['dif'])
+        else :
+            args['dif'] = os.path.abspath(os.path.normpath(args['dif']))
 
 #     if not args['scav2dif'] :
 #         logging.warning('path to scav2diffacto.py file is required')
@@ -212,8 +228,8 @@ def run():
         samples_dict[sample_num] = []
         for z in args[sample_num]:
             mzML_paths.append(z)
-            samples.append(z.split('/')[-1].replace('.mzML', ''))
-            samples_dict[sample_num].append(z.split('/')[-1].replace('.mzML', ''))
+            samples.append(os.path.basename(z).replace('.mzML', ''))
+            samples_dict[sample_num].append(os.path.basename(z).replace('.mzML', ''))
             
     if args['min_samples'] == -1 :
         args['min_samples'] = int(len(samples)/2)
@@ -224,10 +240,12 @@ def run():
     PSMs_full_dict = {}
     PSMs_suf = args['PSM_format']
     if args['PSM_folder'] :
-        dir_name = args['PSM_folder']
+        dir_name = os.path.abspath(os.path.normpath(args['PSM_folder']))
+        if os.path.exists(dir_name) :
+            logging.info('Searching *{} files in {}'.format( PSMs_suf, dir_name))
     else :
-        logging.warning('trying to find *%s files in the same directory as .mzML', PSMs_suf)
-        dir_name = os.path.abspath(mzML_paths[0]).split(samples[0])[0]
+        logging.warning('Searching *{} files in the same directory as .mzML'.format(PSMs_suf))
+        dir_name = os.path.dirname(mzML_paths[0])
     for sample_num in sample_nums :
         PSMs_full_dict[sample_num] = {}
         for sample in samples_dict[sample_num] :
@@ -244,8 +262,9 @@ def run():
     
     if not args['outdir'] :
         logging.info('Path to output directory is not specified. Using input files directory instead.')
-        args['outdir'] = os.path.abspath(mzML_paths[0]).split(samples[0])[0]
+        args['outdir'] = os.path.dirname(mzML_paths[0])
     else :
+        args['outdir'] = os.path.abspath(os.path.normpath(args['outdir']))
         logging.info('Results are stored at {}'.format(args['outdir']))
     
     mzML_dict = {}
@@ -256,14 +275,14 @@ def run():
         peptides_dict = {}
         peptides_suf = 'peptides.tsv'
         if args['pept_folder'] and args['pept_folder'] != args['PSM_folder'] :
-            if os.path.exists(args['pept_folder']) :
-                dir_name = args['pept_folder']
+            if os.path.exists(os.path.normpath(args['pept_folder'])) :
+                dir_name = os.path.abspath(os.path.normpath(args['pept_folder']))
             else :
                 logging.critical('path to peptides files folder does not exist')
                 return -1
         else :
-            logging.warning('trying to find *_%s files in the same directory as PSMs', peptides_suf)
-            dir_name = PSMs_full_paths[0].split(sample[0])[0]
+            logging.warning('trying to find *%s files in the same directory as PSMs', peptides_suf)
+            dir_name = os.path.dirname(PSMs_full_paths[0])
             logging.debug(dir_name)
         for sample in samples :
             i = 0
@@ -279,14 +298,13 @@ def run():
         proteins_dict = {}
         proteins_suf = 'proteins.tsv'
         if args['prot_folder'] and args['prot_folder'] != args['PSM_folder'] :
-            if os.path.exists(args['prot_folder']) :
-                dir_name = args['pept_folder']
+            if os.path.exists(os.path.normpath(args['prot_folder'])) :
+                dir_name = os.path.abspath(os.path.normpath(args['prot_folder']))
             else :
                 logging.critical('path to proteins files folder does not exist')
-                return -1
         else :
-            logging.warning('trying to find *_proteins.tsv files in the same directory as PSMs')
-            dir_name = PSMs_full_paths[0].split(sample[0])[0]
+            logging.warning('Searching *_proteins.tsv files in the same directory as PSMs')
+            dir_name = os.path.dirname(PSMs_full_paths[0])
         for sample in samples :
             i = 0
             for filename in os.listdir(dir_name) :
@@ -342,22 +360,20 @@ def run():
     logging.debug('overwrite_first_diffacto = %s', args['overwrite_first_diffacto'])
     logging.debug('overwrite_matching = %d', args['overwrite_matching'])
 
-    subprocess.call(['mkdir', '-p', out_directory])
+    os.makedirs(out_directory, exist_ok=True)
 
 ## Генерация фич
     if args['feature_folder'] :
-        if os.path.exists(args['feature_folder']) :
-            feature_path = args['feature_folder']
-        else :
+        if not os.path.exists(os.path.normpath(args['feature_folder'])) :
             logging.warning('Path to feature files folder does not exist. Creating it.')
-            feature_path =  args['feature_folder']
+        feature_path = os.path.abspath(os.path.normpath(args['feature_folder']))
     else :
         if args['PSM_folder'] :
-            dir_name = args['PSM_folder']
+            dir_name = os.path.abspath(os.path.normpath(args['PSM_folder']))
         else :
-            dir_name = PSMs_full_paths[0].split(sample[0])[0]
+            dir_name = os.path.dirname(PSMs_full_paths[0])
         feature_path = os.path.join(dir_name,  'features')
-    subprocess.call(['mkdir', '-p', feature_path])
+    os.makedirs(feature_path, exist_ok=True)
 
 
 ### Dinosaur
@@ -365,15 +381,19 @@ def run():
 # На выходе добавляет в папку feature_path файлы *sample*_features_dino.tsv
 
     if args['dino'] :
-        for path, sample in zip(mzML_paths, samples) :
-            outName = sample + '_features_' + 'dino' + '.tsv'
-            if args['overwrite_features'] == 1 or not os.path.exists(os.path.join(feature_path, outName)) :
-                logging.info('\n' + 'Writing features' + ' dino ' + sample + '\n')
-                exitscore = call_Dinosaur(args['dino'], path, feature_path, outName, args['dino_args'])
-                logging.debug(exitscore)
-                os.rename(os.path.join(feature_path, outName + '.features.tsv'),  os.path.join(feature_path, outName) )
-            else :
-                logging.info('\n' + 'Not overwriting features ' + ' dino ' + sample + '\n')
+        if os.path.exists(os.path.normpath(args['dino'])) :
+            args['dino'] = os.path.abspath(os.path.normpath(args['dino']))
+            for path, sample in zip(mzML_paths, samples) :
+                outName = sample + '_features_' + 'dino' + '.tsv'
+                if args['overwrite_features'] == 1 or not os.path.exists(os.path.join(feature_path, outName)) :
+                    logging.info('\n' + 'Writing features' + ' dino ' + sample + '\n')
+                    exitscore = call_Dinosaur(args['dino'], path, feature_path, outName, args['dino_args'])
+                    logging.debug(exitscore)
+                    os.rename(os.path.join(feature_path, outName + '.features.tsv'),  os.path.join(feature_path, outName) )
+                else :
+                    logging.info('\n' + 'Not overwriting features ' + ' dino ' + sample + '\n')
+        else :
+            logging.critical('Path to Dinosaur does not exists: {}'.format(args['dino']))
 
 ### Biosaur2
 
@@ -381,67 +401,72 @@ def run():
 # Важно: опция -hvf 1000 (без нее результаты хуже)
 
     if args['bio2'] :
-        for path, sample in zip(mzML_paths, samples) :
-            outPath = os.path.join(feature_path, sample + '_features_bio2.tsv')
-            if args['overwrite_features'] == 1 or not os.path.exists(outPath) :
-                logging.info('\n' + 'Writing features ' + ' bio2 ' + sample + '\n')
-                exitscore = call_Biosaur2(args['bio2'], path, outPath, args['bio2_args'])
-                logging.debug(exitscore)
-            else :
-                logging.info('\n' + 'Not overwriting features ' + ' bio2 ' + sample + '\n')
-
+        if os.path.exists(os.path.normpath(args['bio2'])) :
+            args['bio2'] = os.path.abspath(os.path.normpath(args['bio2']))
+            for path, sample in zip(mzML_paths, samples) :
+                outPath = os.path.join(feature_path, sample + '_features_bio2.tsv')
+                if args['overwrite_features'] == 1 or not os.path.exists(outPath) :
+                    logging.info('\n' + 'Writing features ' + ' bio2 ' + sample + '\n')
+                    exitscore = call_Biosaur2(args['bio2'], path, outPath, args['bio2_args'])
+                    logging.debug(exitscore)
+                else :
+                    logging.info('\n' + 'Not overwriting features ' + ' bio2 ' + sample + '\n')
+        else :
+            logging.critical('Path to Biosaur2 does not exists: {}'.format(args['bio2']))
             
 ### OpenMS
 
 # На выходе создает в feature_path папку OpenMS с файлами *.featureXML и добавляет в папку out_directory/features файлы *sample*_features_openMS.tsv
     
     if args['openMS'] :
-        out_path = os.path.join(feature_path, 'openMS')
-        subprocess.call(['mkdir', '-p', out_path])
-            
-        for path, sample in zip(mzML_paths, samples) :
-            out_path = os.path.join(feature_path, 'openMS', sample + '.featureXML')
-            if args['overwrite_features'] == 1 or not os.path.exists(out_path) :
-                logging.info('\n' + 'Writing .featureXML ' + ' openMS ' + sample + '\n')
-                exitscore = call_OpenMS(args['openMS'], path, out_path, args['openms_args'])
-                logging.debug(exitscore)
-            else :
-                logging.info('\n' + 'Not ovetwriting .featureXML ' + ' openMS ' + sample + '\n')
+        if os.path.exists(os.path.normpath(args['openMS'])) :
+            out_path = os.path.join(feature_path, 'openMS')
+            os.makedirs(out_path, exist_ok=True)
+            for path, sample in zip(mzML_paths, samples) :
+                out_path = os.path.join(feature_path, 'openMS', sample + '.featureXML')
+                if args['overwrite_features'] == 1 or not os.path.exists(out_path) :
+                    logging.info('\n' + 'Writing .featureXML ' + ' openMS ' + sample + '\n')
+                    exitscore = call_OpenMS(args['openMS'], path, out_path, args['openms_args'])
+                    logging.debug(exitscore)
+                else :
+                    logging.info('\n' + 'Not ovetwriting .featureXML ' + ' openMS ' + sample + '\n')
 
-        for path, sample in zip(mzML_paths, samples) :
-            out_path = os.path.join(feature_path, 'openMS', sample + '.featureXML')
-            o = os.path.join(feature_path, sample + '_features_' + 'openMS.tsv')
-            if args['overwrite_features'] == 1 or not os.path.exists(o) : 
-                logging.info('Writing features ' + ' openMS ' + sample)
-                a = featurexml.read(out_path)
+            for path, sample in zip(mzML_paths, samples) :
+                out_path = os.path.join(feature_path, 'openMS', sample + '.featureXML')
+                o = os.path.join(feature_path, sample + '_features_' + 'openMS.tsv')
+                if args['overwrite_features'] == 1 or not os.path.exists(o) : 
+                    logging.info('Writing features ' + ' openMS ' + sample)
+                    a = featurexml.read(out_path)
 
-                features_list = []
-                for z in a : 
-                    mz = float(z['position'][1]['position'])
-                    # rtApex = float(z['position'][0]['position']) / 60
-                    rtStart = float(z['convexhull'][0]['pt'][0]['x'])/60
-                    rtEnd = float(z['convexhull'][0]['pt'][1]['x'])/60
-                    intensityApex = float(z['intensity'])
-                    charge = int(z['charge'])
-                    feature_index = z['id']
-                    features_list.append([feature_index, mz, charge, rtStart,rtEnd, intensityApex])
-                b = pd.DataFrame(features_list, columns = ['id', 'mz', 'charge', 'rtStart', 'rtEnd', 'intensityApex'])
-                b.to_csv(o, sep='\t', encoding='utf-8')
-            else :
-                logging.info('Not overwriting features ' + ' openMS ' + sample + '\n')
+                    features_list = []
+                    for z in a : 
+                        mz = float(z['position'][1]['position'])
+                        # rtApex = float(z['position'][0]['position']) / 60
+                        rtStart = float(z['convexhull'][0]['pt'][0]['x'])/60
+                        rtEnd = float(z['convexhull'][0]['pt'][1]['x'])/60
+                        intensityApex = float(z['intensity'])
+                        charge = int(z['charge'])
+                        feature_index = z['id']
+                        features_list.append([feature_index, mz, charge, rtStart,rtEnd, intensityApex])
+                    b = pd.DataFrame(features_list, columns = ['id', 'mz', 'charge', 'rtStart', 'rtEnd', 'intensityApex'])
+                    b.to_csv(o, sep='\t', encoding='utf-8')
+                else :
+                    logging.info('Not overwriting features ' + ' openMS ' + sample + '\n')
+        else :
+            logging.critical('Path to OpenMSFeatureFinder does not exists: {}'.format(args['openMS']))
 
 
 ### Сопоставление
 
     if args['matching_folder'] :
         if os.path.exists(args['matching_folder']) :
-            matching_path = args['matching_folder']
+            matching_path = os.path.abspath(os.path.normpath(args['matching_folder']))
         else :
-            logging.critical('Path to matching_folder does not exists')
-            return -1
+            pass
     else :
         matching_path = os.path.join(out_directory, 'feats_matched')
-    subprocess.call(['mkdir', '-p', matching_path])
+        logging.critical('Path to matching folder does not exists, using default one: {}'.format(matching_path))
+    os.makedirs(matching_path, exist_ok=True)
 
     logging.info('Start matching features')
     for PSM_path, sample in zip(PSMs_full_paths, samples) :
@@ -456,7 +481,7 @@ def run():
                 temp_df = optimized_search_with_isotope_error_(feats, PSM, isotopes_array=args['isotopes'])[0]
                 # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2])[0]
 
-                if args['mbr']:	
+                if args['mbr']:    
                     temp_df = mbr(feats, temp_df, PSMs_full_paths, PSM_path)
                 
 
@@ -492,14 +517,13 @@ def run():
     if mode == 'diffacto' :
         logging.info('Going for quantitative analysis with diffacto')
         if args['diffacto_folder'] :
-            if os.path.exists(args['diffacto_folder']) :
-                diffacto_folder = args['diffacto_folder']
+            if os.path.exists(os.path.normpath(args['diffacto_folder'])) :
+                diffacto_folder = os.path.abspath(os.path.normpath(args['diffacto_folder']))
             else :
-                diffacto_folder = os.path.join(out_directory, 'diffacto')
-                logging.warning('Path to diffacto results does not exists, using default one:', diffacto_folder)
+                logging.warning('Path to diffacto results does not exists, using default one: {}'.format( os.path.join(out_directory, 'diffacto')))
         else :
             diffacto_folder = os.path.join(out_directory, 'diffacto')
-        subprocess.call(['mkdir', '-p', diffacto_folder])
+        os.makedirs(diffacto_folder, exist_ok=True)
 
         intens_colomn_name = 'feature_intensityApex'
         if args['norm'] == 1 :
@@ -528,7 +552,7 @@ def run():
                 logging.debug('Starting %s', sample)
                 if args['logs'] == 'DEBUG' :
                     charge_faims_intensity_path = os.path.join(diffacto_folder, 'charge_faims_intensity')
-                    subprocess.call(['mkdir', '-p', charge_faims_intensity_path])
+                    os.makedirs(charge_faims_intensity_path, exist_ok=True)
                     out_path = os.path.join(diffacto_folder, 'charge_faims_intensity', sample+'_'+suf+'.tsv')
                 else :
                     out_path = None
