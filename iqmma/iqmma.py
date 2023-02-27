@@ -135,47 +135,49 @@ def run():
     if not isinstance(numeric_level, int):
         raise ValueError('Invalid log level: %s' % loglevel)
 
+    logger = logging.getLogger('logger')
+    logger.setLevel(loglevel)
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s]: %(message)s')
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(loglevel)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+
     if args['log_path'] :
         args['log_path'] = os.path.abspath(os.path.normpath(args['log_path']))
         log_directory = os.path.dirname(args['log_path'])
         os.makedirs(log_directory, exist_ok=True)
+        fh = logging.FileHandler(args['log_path'], mode='w', encoding='utf-8')
+        fh.setLevel(loglevel)
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
 
-        logging.basicConfig(
-            format='%(asctime)s [%(levelname)s]: %(message)s',
-            level=numeric_level,
-            handlers=[  logging.FileHandler(args['log_path'], mode='w', encoding='utf-8'),
-                        logging.StreamHandler(sys.stdout) ]
-                            )
-    else :
-        logging.basicConfig(
-            format='%(asctime)s [%(levelname)s]: %(message)s',
-            level=numeric_level,
-            handlers=[  logging.StreamHandler(sys.stdout) ]
-                        )
     logging.getLogger('matplotlib').setLevel(logging.ERROR)
     
-    logging.info('Started')
+    logger.info('Started')
     
     if args['example_cfg'] :
         p = os.path.abspath(os.path.normpath(args['example_cfg']))
         if os.path.exists(os.path.dirname(p)) or os.path.exists(p) :
             if os.path.exists(p) :
-                logging.info('Example cfg would be overwrited')
+                logger.info('Example cfg would be overwrited')
             write_example_cfg(args['example_cfg'], default_config)
-            logging.info('Example cfg created')
+            logger.info('Example cfg created')
+            return 0
         else :
-            logging.warning('Invalid path for example cfg creation. Directory does not exist')
+            logger.warning('Invalid path for example cfg creation. Directory does not exist')
+            return 1
     
-    logging.debug(args)
+    logger.debug(args)
     
     mode = None
     if not args['s2'] :
         sample_nums = ['s1']
-        logging.info('mode = feature matching')
+        logger.info('mode = feature matching')
         mode = 'feature matching'
     else :
         sample_nums = ['s1', 's2']
-        logging.info('mode = diffacto')
+        logger.info('mode = diffacto')
         mode = 'diffacto'
     
     for sample_num in sample_nums :
@@ -185,23 +187,23 @@ def run():
             elif type(args[sample_num]) is list :
                 args[sample_num] = [os.path.abspath(os.path.normpath(x)) for x in args[sample_num]]
             else :
-                logging.critical('invalid {} input'.format(sample_num))
+                logger.critical('invalid {} input'.format(sample_num))
                 return -1
     
 #    print(args['s1'].split())
 
     if mode == 'diffacto' :
         if not args['dif'] :
-            logging.critical('Path to diffacto executable file is required')
+            logger.critical('Path to diffacto executable file is required')
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), args['dif'])
         elif not os.path.exists(os.path.normpath(args['dif'])) :
-            logging.critical('Path to diffacto executable file does not exist: {}'.format(os.path.normpath(args['dif'])))
+            logger.critical('Path to diffacto executable file does not exist: {}'.format(os.path.normpath(args['dif'])))
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), args['dif'])
         else :
             args['dif'] = os.path.abspath(os.path.normpath(args['dif']))
 
 #     if not args['scav2dif'] :
-#         logging.warning('path to scav2diffacto.py file is required')
+#         logger.warning('path to scav2diffacto.py file is required')
 #         return -1
     
     arg_suff = ['dino', 'bio2', 'openMS']
@@ -212,15 +214,15 @@ def run():
     
     k = len(suffixes)
     if k == 0 :
-        logging.critical('At least one feature detector shoud be given!')
+        logger.critical('At least one feature detector shoud be given!')
         return -1
     elif k == 1 and mode == 'diffacto' :
-        logging.info('First diffacto run applied')
+        logger.info('First diffacto run applied')
         args['venn'] = 0
     elif k >= 2 and mode == 'diffacto' :
-        logging.info('Second diffacto run applied')
+        logger.info('Second diffacto run applied')
     else :
-        logging.info('No diffacto run applied')
+        logger.info('No diffacto run applied')
     
     samples = []
     samples_dict = {}
@@ -235,7 +237,7 @@ def run():
     if args['min_samples'] == -1 :
         args['min_samples'] = int(len(samples)/2)
     
-    logging.debug('samples_dict = ' + str(samples_dict))
+    logger.debug('samples_dict = ' + str(samples_dict))
 
     PSMs_full_paths = []
     PSMs_full_dict = {}
@@ -243,9 +245,9 @@ def run():
     if args['PSM_folder'] :
         dir_name = os.path.abspath(os.path.normpath(args['PSM_folder']))
         if os.path.exists(dir_name) :
-            logging.info('Searching *{} files in {}'.format( PSMs_suf, dir_name))
+            logger.info('Searching *{} files in {}'.format( PSMs_suf, dir_name))
     else :
-        logging.warning('Searching *{} files in the same directory as .mzML'.format(PSMs_suf))
+        logger.warning('Searching *{} files in the same directory as .mzML'.format(PSMs_suf))
         dir_name = os.path.dirname(mzML_paths[0])
     for sample_num in sample_nums :
         PSMs_full_dict[sample_num] = {}
@@ -257,16 +259,16 @@ def run():
                     PSMs_full_dict[sample_num][sample] = os.path.join(dir_name, filename)
                     i += 1
             if i == 0 :
-                logging.critical('sample ' + sample + ' PSM file not found')
+                logger.critical('sample ' + sample + ' PSM file not found')
                 return -1
-    logging.debug(PSMs_full_dict)
+    logger.debug(PSMs_full_dict)
     
     if not args['outdir'] :
-        logging.info('Path to output directory is not specified. Using input files directory instead.')
+        logger.info('Path to output directory is not specified. Using input files directory instead.')
         args['outdir'] = os.path.dirname(mzML_paths[0])
     else :
         args['outdir'] = os.path.abspath(os.path.normpath(args['outdir']))
-        logging.info('Results are stored at {}'.format(args['outdir']))
+        logger.info('Results are stored at {}'.format(args['outdir']))
     
     mzML_dict = {}
     for sample, mzML in zip(samples, mzML_paths) :
@@ -279,21 +281,21 @@ def run():
             if os.path.exists(os.path.normpath(args['pept_folder'])) :
                 dir_name = os.path.abspath(os.path.normpath(args['pept_folder']))
             else :
-                logging.critical('path to peptides files folder does not exist')
+                logger.critical('path to peptides files folder does not exist')
                 return -1
         else :
-            logging.warning('trying to find *%s files in the same directory as PSMs', peptides_suf)
+            logger.warning('trying to find *%s files in the same directory as PSMs', peptides_suf)
             dir_name = os.path.dirname(PSMs_full_paths[0])
-            logging.debug(dir_name)
+            logger.debug(dir_name)
         for sample in samples :
             i = 0
             for filename in os.listdir(dir_name) :
                 if filename.startswith(sample) and filename.endswith(peptides_suf) :
                     peptides_dict[sample] = os.path.join(dir_name, filename)
-                    logging.debug(os.path.join(dir_name, filename))
+                    logger.debug(os.path.join(dir_name, filename))
                     i += 1
             if i == 0 :
-                logging.critical('sample '+ sample + ' peptides file not found in ' + dir_name)
+                logger.critical('sample '+ sample + ' peptides file not found in ' + dir_name)
                 return -1
 
         proteins_dict = {}
@@ -302,9 +304,9 @@ def run():
             if os.path.exists(os.path.normpath(args['prot_folder'])) :
                 dir_name = os.path.abspath(os.path.normpath(args['prot_folder']))
             else :
-                logging.critical('path to proteins files folder does not exist')
+                logger.critical('path to proteins files folder does not exist')
         else :
-            logging.warning('Searching *_proteins.tsv files in the same directory as PSMs')
+            logger.warning('Searching *_proteins.tsv files in the same directory as PSMs')
             dir_name = os.path.dirname(PSMs_full_paths[0])
         for sample in samples :
             i = 0
@@ -313,7 +315,7 @@ def run():
                     proteins_dict[sample] = os.path.join(dir_name, filename)
                     i += 1
             if i == 0 :
-                logging.critical('sample '+ sample + ' proteins file not found')
+                logger.critical('sample '+ sample + ' proteins file not found')
                 return -1
     
     paths = {'mzML': mzML_dict, 
@@ -343,30 +345,30 @@ def run():
     # elif args['dynamic_fc_threshold'] == '0' :
     #     args['dynamic_fc_threshold'] = False
     # else :
-    #     logging.critical('Invalid value for setting: -dynamic_fc_threshold %s', args['dynamic_fc_threshold'])
+    #     logger.critical('Invalid value for setting: -dynamic_fc_threshold %s', args['dynamic_fc_threshold'])
     #     raise ValueError('Invalid value for setting: -dynamic_fc_threshold %s', args['dynamic_fc_threshold'])
 
         
     
-    logging.debug('PSMs_full_paths: %s', PSMs_full_paths)
-    logging.debug('mzML_paths: %s', mzML_paths)
-    logging.debug('out_directory: %s', out_directory)
-    logging.debug('suffixes: %s', suffixes)
-    logging.debug('sample_1: %s', sample_1)
-    logging.debug('sample_2: %s', sample_2)
-    logging.debug('mixed = %s', args['mixed'])
-    logging.debug('venn = %s', args['venn'])
-    logging.debug('choice = %s', args['choice'])
-    logging.debug('overwrite_features = %s', args['overwrite_features'])
-    logging.debug('overwrite_first_diffacto = %s', args['overwrite_first_diffacto'])
-    logging.debug('overwrite_matching = %d', args['overwrite_matching'])
+    logger.debug('PSMs_full_paths: %s', PSMs_full_paths)
+    logger.debug('mzML_paths: %s', mzML_paths)
+    logger.debug('out_directory: %s', out_directory)
+    logger.debug('suffixes: %s', suffixes)
+    logger.debug('sample_1: %s', sample_1)
+    logger.debug('sample_2: %s', sample_2)
+    logger.debug('mixed = %s', args['mixed'])
+    logger.debug('venn = %s', args['venn'])
+    logger.debug('choice = %s', args['choice'])
+    logger.debug('overwrite_features = %s', args['overwrite_features'])
+    logger.debug('overwrite_first_diffacto = %s', args['overwrite_first_diffacto'])
+    logger.debug('overwrite_matching = %d', args['overwrite_matching'])
 
     os.makedirs(out_directory, exist_ok=True)
 
 ## Генерация фич
     if args['feature_folder'] :
         if not os.path.exists(os.path.normpath(args['feature_folder'])) :
-            logging.warning('Path to feature files folder does not exist. Creating it.')
+            logger.warning('Path to feature files folder does not exist. Creating it.')
         feature_path = os.path.abspath(os.path.normpath(args['feature_folder']))
     else :
         if args['PSM_folder'] :
@@ -387,13 +389,13 @@ def run():
             for path, sample in zip(mzML_paths, samples) :
                 outName = sample + '_features_' + 'dino' + '.tsv'
                 if args['overwrite_features'] == 1 or not os.path.exists(os.path.join(feature_path, outName)) :
-                    logging.info('\n' + 'Writing features' + ' dino ' + sample + '\n')
-                    exitscore = call_Dinosaur(args['dino'], path, feature_path, outName, args['dino_args'])
-                    logging.debug(exitscore)
+                    logger.info('\n' + 'Writing features' + ' dino ' + sample + '\n')
+                    exitscore = call_Dinosaur(args['dino'], path, feature_path, outName, args['dino_args'], logger=logger)
+                    logger.debug(exitscore)
                 else :
-                    logging.info('\n' + 'Not overwriting features ' + ' dino ' + sample + '\n')
+                    logger.info('\n' + 'Not overwriting features ' + ' dino ' + sample + '\n')
         else :
-            logging.critical('Path to Dinosaur does not exists: {}'.format(args['dino']))
+            logger.critical('Path to Dinosaur does not exists: {}'.format(args['dino']))
 
 ### Biosaur2
 
@@ -406,13 +408,13 @@ def run():
             for path, sample in zip(mzML_paths, samples) :
                 outPath = os.path.join(feature_path, sample + '_features_bio2.tsv')
                 if args['overwrite_features'] == 1 or not os.path.exists(outPath) :
-                    logging.info('\n' + 'Writing features ' + ' bio2 ' + sample + '\n')
-                    exitscore = call_Biosaur2(args['bio2'], path, outPath, args['bio2_args'])
-                    logging.debug(exitscore)
+                    logger.info('\n' + 'Writing features ' + ' bio2 ' + sample + '\n')
+                    exitscore = call_Biosaur2(args['bio2'], path, outPath, args['bio2_args'], logger=logger)
+                    logger.debug(exitscore)
                 else :
-                    logging.info('\n' + 'Not overwriting features ' + ' bio2 ' + sample + '\n')
+                    logger.info('\n' + 'Not overwriting features ' + ' bio2 ' + sample + '\n')
         else :
-            logging.critical('Path to Biosaur2 does not exists: {}'.format(args['bio2']))
+            logger.critical('Path to Biosaur2 does not exists: {}'.format(args['bio2']))
             
 ### OpenMS
 
@@ -425,17 +427,17 @@ def run():
             for path, sample in zip(mzML_paths, samples) :
                 out_path = os.path.join(feature_path, 'openMS', sample + '.featureXML')
                 if args['overwrite_features'] == 1 or not os.path.exists(out_path) :
-                    logging.info('\n' + 'Writing .featureXML ' + ' openMS ' + sample + '\n')
-                    exitscore = call_OpenMS(args['openMS'], path, out_path, args['openms_args'])
-                    logging.debug(exitscore)
+                    logger.info('\n' + 'Writing .featureXML ' + ' openMS ' + sample + '\n')
+                    exitscore = call_OpenMS(args['openMS'], path, out_path, args['openms_args'], logger=logger)
+                    logger.debug(exitscore)
                 else :
-                    logging.info('\n' + 'Not ovetwriting .featureXML ' + ' openMS ' + sample + '\n')
+                    logger.info('\n' + 'Not ovetwriting .featureXML ' + ' openMS ' + sample + '\n')
 
             for path, sample in zip(mzML_paths, samples) :
                 out_path = os.path.join(feature_path, 'openMS', sample + '.featureXML')
                 o = os.path.join(feature_path, sample + '_features_' + 'openMS.tsv')
                 if args['overwrite_features'] == 1 or not os.path.exists(o) : 
-                    logging.info('Writing features ' + ' openMS ' + sample)
+                    logger.info('Writing features ' + ' openMS ' + sample)
                     a = featurexml.read(out_path)
 
                     features_list = []
@@ -451,9 +453,9 @@ def run():
                     b = pd.DataFrame(features_list, columns = ['id', 'mz', 'charge', 'rtStart', 'rtEnd', 'intensityApex'])
                     b.to_csv(o, sep='\t', encoding='utf-8')
                 else :
-                    logging.info('Not overwriting features ' + ' openMS ' + sample + '\n')
+                    logger.info('Not overwriting features ' + ' openMS ' + sample + '\n')
         else :
-            logging.critical('Path to OpenMSFeatureFinder does not exists: {}'.format(args['openMS']))
+            logger.critical('Path to OpenMSFeatureFinder does not exists: {}'.format(args['openMS']))
 
 
 ### Сопоставление
@@ -465,35 +467,34 @@ def run():
             pass
     else :
         matching_path = os.path.join(out_directory, 'feats_matched')
-        logging.critical('Path to matching folder does not exists, using default one: {}'.format(matching_path))
+        logger.critical('Path to matching folder does not exists, using default one: {}'.format(matching_path))
     os.makedirs(matching_path, exist_ok=True)
 
-    logging.info('Start matching features')
+    logger.info('Start matching features')
     for PSM_path, sample in zip(PSMs_full_paths, samples) :
         PSM = read_PSMs(PSM_path)
-        logging.info('sample %s', sample)
+        logger.info('sample %s', sample)
         for suf in suffixes :
             if args['overwrite_matching'] == 1 or not os.path.exists(os.path.join(matching_path, sample + '_' + suf + '.tsv')) :
                 feats = pd.read_csv( os.path.join(feature_path, sample + '_features_' + suf + '.tsv'), sep = '\t')
                 feats = feats.sort_values(by='mz')
 
-                logging.info(suf + ' features ' + sample + '\n' + 'START')
-                temp_df = optimized_search_with_isotope_error_(feats, PSM, isotopes_array=args['isotopes'])[0]
-                # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2])[0]
+                logger.info(suf + ' features ' + sample + '\n' + 'START')
+                temp_df = optimized_search_with_isotope_error_(feats, PSM, isotopes_array=args['isotopes'], logger=logger)[0]
+                # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2], logger=logger)[0]
 
                 if args['mbr']:    
-                    temp_df = mbr(feats, temp_df, PSMs_full_paths, PSM_path)
-                
+                    temp_df = mbr(feats, temp_df, PSMs_full_paths, PSM_path, logger=logger)
 
                 median = temp_df['feature_intensityApex'].median()
                 temp_df['med_norm_feature_intensityApex'] = temp_df['feature_intensityApex']/median
                 cols = list(temp_df.columns)
                 
-                logging.info(suf + ' features ' + sample + ' DONE')
+                logger.info(suf + ' features ' + sample + ' DONE')
                 temp_df.to_csv(os.path.join(matching_path, sample + '_' + suf + '.tsv'), sep='\t', columns=cols)
-                logging.info(sample + ' PSMs matched ' + str(temp_df['feature_intensityApex'].notna().sum()) + '/' 
+                logger.info(sample + ' PSMs matched ' + str(temp_df['feature_intensityApex'].notna().sum()) + '/' 
                              + str(len(temp_df)) + ' ' + str(round(temp_df['feature_intensityApex'].notna().sum()/len(temp_df)*100, 2)) + '%')
-                logging.info(suf + ' MATCHED')
+                logger.info(suf + ' MATCHED')
                 
         temp_df = None   
     
@@ -505,22 +506,22 @@ def run():
             if os.path.exists(s):
                 feats_matched_paths[suf] = s
             else :
-                logging.critical('File not found: %s', s)
+                logger.critical('File not found: %s', s)
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), s)
                 return -1
         paths['feats_matched'][sample] = feats_matched_paths
-    logging.info('Matching features for PSMs done')
+    logger.info('Matching features for PSMs done')
 
     
     ## Подготовка и прогон Диффакто 1
 
     if mode == 'diffacto' :
-        logging.info('Going for quantitative analysis with diffacto')
+        logger.info('Going for quantitative analysis with diffacto')
         if args['diffacto_folder'] :
             if os.path.exists(os.path.normpath(args['diffacto_folder'])) :
                 diffacto_folder = os.path.abspath(os.path.normpath(args['diffacto_folder']))
             else :
-                logging.warning('Path to diffacto results does not exists, using default one: {}'.format( os.path.join(out_directory, 'diffacto')))
+                logger.warning('Path to diffacto results does not exists, using default one: {}'.format( os.path.join(out_directory, 'diffacto')))
         else :
             diffacto_folder = os.path.join(out_directory, 'diffacto')
         os.makedirs(diffacto_folder, exist_ok=True)
@@ -539,17 +540,17 @@ def run():
         for sample in samples :
             df0 = pd.read_table(paths['peptides'][sample])
             allowed_peptides.update(df0['peptide'])
-        logging.debug('allowed proteins total: %d', len(allowed_prots))
-        logging.debug('allowed peptides total: %d', len(allowed_peptides))
+        logger.debug('allowed proteins total: %d', len(allowed_prots))
+        logger.debug('allowed peptides total: %d', len(allowed_peptides))
 
         paths['DiffPept'] = {}
         paths['DiffSampl'] = {}
         paths['DiffOut'] = {}
         for suf in suffixes:
-            logging.info('Charge states processing %s', suf)
+            logger.info('Charge states processing %s', suf)
             psms_dict = {}
             for sample in samples:
-                logging.debug('Starting %s', sample)
+                logger.debug('Starting %s', sample)
                 if loglevel == 'DEBUG' :
                     charge_faims_intensity_path = os.path.join(diffacto_folder, 'charge_faims_intensity')
                     os.makedirs(charge_faims_intensity_path, exist_ok=True)
@@ -563,9 +564,10 @@ def run():
                     intens_colomn_name='feature_intensityApex', 
                     allowed_peptides=allowed_peptides, # set()
                     allowed_prots=allowed_prots, # set()
-                    out_path=out_path
+                    out_path=out_path,
+                    logger=logger
                 )
-                logging.debug('Done %s', sample)
+                logger.debug('Done %s', sample)
 
             paths['DiffPept'][suf] = os.path.join(diffacto_folder, args['outPept'].replace('.txt', '_' + suf + '.txt'))
             paths['DiffSampl'][suf] = os.path.join(diffacto_folder, args['outSampl'].replace('.txt', '_' + suf + '.txt'))
@@ -579,9 +581,10 @@ def run():
                                           psm_dfs_dict = psms_dict,
                                           samples_dict = samples_dict,
                                           write_peptides=True,
-                                          str_of_other_args = args['diffacto_args']
+                                          str_of_other_args = args['diffacto_args'],
+                                          logger=logger
                                          )  
-            logging.info('Done Diffacto run with %s', suf)
+            logger.info('Done Diffacto run with %s', suf)
             psms_dict = False
             
         if k <= 2 or args['mixed'] != 1 :
@@ -601,7 +604,8 @@ def run():
             pval_threshold = args['pval_threshold'], 
             fc_threshold = args['fc_threshold'], 
             dynamic_fc_threshold = args['dynamic_fc_threshold'], 
-            save = save
+            save = save, 
+            logger=logger
         )
         
         if args['choice'] == 0 :
@@ -615,7 +619,7 @@ def run():
         
         if k >= 2 and args['mixed'] == 1 :
             suf = 'mixed'
-            logging.info('Mixing intensities STARTED')
+            logger.info('Mixing intensities STARTED')
             
             to_diffacto = os.path.join(diffacto_folder, args['outPept'].replace('.txt', '_' + suf + '.txt'))
             a = mix_intensity(paths['DiffPept'],
@@ -624,16 +628,17 @@ def run():
                               suf_dict={'dino':'D', 'bio2':'B2', 'openMS':'O', 'mixed':'M'}, 
                               out_dir= charge_faims_intensity_path,
                               default_order= default_order,
-                              to_diffacto= to_diffacto, 
+                              to_diffacto= to_diffacto,
+                              logger=logger 
                               )
             
-            logging.info('Mixing intensities DONE with exitscore {}'.format(a))
+            logger.info('Mixing intensities DONE with exitscore {}'.format(a))
             
             paths['DiffPept'][suf] = to_diffacto
             paths['DiffSampl'][suf] = os.path.join(diffacto_folder, args['outSampl'].replace('.txt', '_' + suf + '.txt'))
             paths['DiffOut'][suf] = os.path.join(diffacto_folder, args['outDiff'].replace('.txt', '_' + suf + '.txt'))
             
-            logging.info('Diffacto START')        
+            logger.info('Diffacto START')        
             exitscore = diffacto_call(diffacto_path = args['dif'],
                                       out_path = paths['DiffOut'][suf],
                                       peptide_path = paths['DiffPept'][suf],
@@ -641,9 +646,10 @@ def run():
                                       min_samples = args['min_samples'],
                                       psm_dfs_dict = {},
                                       samples_dict = samples_dict,
-                                      str_of_other_args = args['diffacto_args']
+                                      str_of_other_args = args['diffacto_args'],
+                                      logger=logger
                                      )
-            logging.info('Done Diffacto run with {} with exitscore {}'.format(suf, exitscore))
+            logger.info('Done Diffacto run with {} with exitscore {}'.format(suf, exitscore))
             
             save = True
             if args['venn'] != 1 :
@@ -658,13 +664,14 @@ def run():
                 pval_threshold = args['pval_threshold'], 
                 fc_threshold = args['fc_threshold'], 
                 dynamic_fc_threshold = args['dynamic_fc_threshold'], 
-                save = save
+                save = save, 
+                logger=logger
             )
-            logging.info('Numbers of differentially expressed proteins:')
+            logger.info('Numbers of differentially expressed proteins:')
             for suf in suffixes+['mixed'] :
-                logging.info('{}: {}'.format(suf, num_changed_prots[suf]))
+                logger.info('{}: {}'.format(suf, num_changed_prots[suf]))
                 
-            logging.info('IQMMA finished')
+            logger.info('IQMMA finished')
 
 if __name__ == '__main__':
     run()
