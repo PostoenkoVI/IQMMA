@@ -163,8 +163,10 @@ def run():
                 logger.info('Example cfg would be overwrited')
             write_example_cfg(args['example_cfg'], default_config)
             logger.info('Example cfg created')
+            return 0
         else :
             logger.warning('Invalid path for example cfg creation. Directory does not exist')
+            return 1
     
     logger.debug(args)
     
