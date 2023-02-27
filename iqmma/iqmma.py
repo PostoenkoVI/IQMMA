@@ -485,7 +485,6 @@ def run():
 
                 if args['mbr']:    
                     temp_df = mbr(feats, temp_df, PSMs_full_paths, PSM_path, logger=logger)
-                
 
                 median = temp_df['feature_intensityApex'].median()
                 temp_df['med_norm_feature_intensityApex'] = temp_df['feature_intensityApex']/median
