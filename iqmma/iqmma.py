@@ -395,7 +395,7 @@ def run():
                 else :
                     logger.info('\n' + 'Not overwriting features ' + ' dino ' + sample + '\n')
         else :
-            logger.critical('Path to Dinosaur does not exists: {}'.format(args['dino']))
+            logger.critical('Skipping Dinosaur. Path to Dinosaur does not exists: {}'.format(args['dino']))
 
 ### Biosaur2
 
@@ -414,7 +414,7 @@ def run():
                 else :
                     logger.info('\n' + 'Not overwriting features ' + ' bio2 ' + sample + '\n')
         else :
-            logger.critical('Path to Biosaur2 does not exists: {}'.format(args['bio2']))
+            logger.critical('Skipping Biosaur2. Path to Biosaur2 does not exists: {}'.format(args['bio2']))
             
 ### OpenMS
 
@@ -455,7 +455,7 @@ def run():
                 else :
                     logger.info('Not overwriting features ' + ' openMS ' + sample + '\n')
         else :
-            logger.critical('Path to OpenMSFeatureFinder does not exists: {}'.format(args['openMS']))
+            logger.critical('Skipping OpenMS. Path to OpenMSFeatureFinderCentroided does not exists: {}'.format(args['openMS']))
 
 
 ### Сопоставление
@@ -467,7 +467,7 @@ def run():
             pass
     else :
         matching_path = os.path.join(out_directory, 'feats_matched')
-        logger.critical('Path to matching folder does not exists, using default one: {}'.format(matching_path))
+        logger.warning('Path to matching folder does not exists, using default one: {}'.format(matching_path))
     os.makedirs(matching_path, exist_ok=True)
 
     logger.info('Start matching features')
@@ -608,7 +608,7 @@ def run():
             logger=logger
         )
         
-        if sum(list(num_changed_prots.values()) == 0 :
+        if sum(list(num_changed_prots.values())) == 0 :
             logging.warning('No differentially expressed proteins detected in separate diffacto runs')
         
         if args['choice'] == 0 :
