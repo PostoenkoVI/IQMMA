@@ -21,7 +21,7 @@ For basic usage all PSMs and mzML files should be stored in the same directory, 
 
 Basic command for quantitation mode: 
 
-    iqmma -bio2 path_to_Biosaur2 -dino path_to_Dinosaur -openms path_to_openMS -diff path_to_Diffacto -s1 paths_to_mzml_files_from_sample_1_*.mzML -s2 paths_to_mzml_files_from_sample_2_*.mzML -outdir out_dir
+    iqmma -bio2 path_to_Biosaur2 -dino path_to_Dinosaur -openms path_to_openMS -dif path_to_Diffacto -s1 paths_to_mzml_files_from_sample_1_*.mzML -s2 paths_to_mzml_files_from_sample_2_*.mzML -outdir out_dir
 
 Note 1: -s2 argument is necessary for quantitation mode to activate.
 
@@ -31,7 +31,7 @@ Note 2: at least two feature detections should be given for Mix algorithm to wor
 
 Basic command for matching peptide intensities: 
 
-    iqmma -bio2 path_to_Biosaur2 -dino path_to_Dinosaur -openms path_to_openMS -diff path_to_Diffacto -s1 paths_to_all_mzml_files_*.mzML -outdir out_path
+    iqmma -bio2 path_to_Biosaur2 -dino path_to_Dinosaur -openms path_to_openMS -dif path_to_Diffacto -s1 paths_to_all_mzml_files_*.mzML -outdir out_path
 
 Note: all mzml files go into the first sample without any differences between them, no quantitation applied.
 
