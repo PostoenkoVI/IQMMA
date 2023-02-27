@@ -478,11 +478,11 @@ def run():
                 feats = feats.sort_values(by='mz')
 
                 logger.info(suf + ' features ' + sample + '\n' + 'START')
-                temp_df = optimized_search_with_isotope_error_(feats, PSM, isotopes_array=args['isotopes'])[0]
-                # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2])[0]
+                temp_df = optimized_search_with_isotope_error_(feats, PSM, isotopes_array=args['isotopes'], logger=logger)[0]
+                # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2], logger=logger)[0]
 
                 if args['mbr']:    
-                    temp_df = mbr(feats, temp_df, PSMs_full_paths, PSM_path)
+                    temp_df = mbr(feats, temp_df, PSMs_full_paths, PSM_path, logger=logger)
                 
 
                 median = temp_df['feature_intensityApex'].median()
