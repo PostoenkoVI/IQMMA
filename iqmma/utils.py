@@ -70,7 +70,7 @@ def write_example_cfg(path, dct_args):
         f.write('# here you can set your parameters\n')
 
 
-def call_Dinosaur(path_to_fd, mzml_path, outdir, outname, str_of_other_args ) :
+def call_Dinosaur(path_to_fd, mzml_path, outdir, outname, str_of_other_args, logger = logging.getLogger('function') ) :
     if str_of_other_args :
         other_args = ['--' + x.strip().replace(' ', '=') for x in str_of_other_args.strip('"').split('--')]
     else :
@@ -84,12 +84,12 @@ def call_Dinosaur(path_to_fd, mzml_path, outdir, outname, str_of_other_args ) :
                                stdout=subprocess.PIPE, 
                                stderr=subprocess.STDOUT)
     with process.stdout:
-        log_subprocess_output(process.stdout)
+        log_subprocess_output(process.stdout, logger=logger)
     exitscore = process.wait()
     os.rename(os.path.join(outdir, outname + '.features.tsv'),  os.path.join(outdir, outname) )
     return exitscore
 
-def call_Biosaur2(path_to_fd, mzml_path, outpath, str_of_other_args) :
+def call_Biosaur2(path_to_fd, mzml_path, outpath, str_of_other_args, logger = logging.getLogger('function')) :
     if str_of_other_args :
         other_args = [x.strip() for x in str_of_other_args.strip('"').split(' ')]
     else :
@@ -100,11 +100,11 @@ def call_Biosaur2(path_to_fd, mzml_path, outpath, str_of_other_args) :
                                stdout=subprocess.PIPE, 
                                stderr=subprocess.STDOUT)
     with process.stdout:
-        log_subprocess_output(process.stdout)
+        log_subprocess_output(process.stdout, logger=logger)
     exitscore = process.wait()
     return exitscore
 
-def call_OpenMS(path_to_fd, mzml_path, outpath, str_of_other_args) :
+def call_OpenMS(path_to_fd, mzml_path, outpath, str_of_other_args, logger = logging.getLogger('function')) :
     if str_of_other_args :
         other_args = [x.strip() for x in str_of_other_args.strip('"').split(' ')]
     else :
@@ -118,7 +118,7 @@ def call_OpenMS(path_to_fd, mzml_path, outpath, str_of_other_args) :
                                stdout=subprocess.PIPE, 
                                stderr=subprocess.STDOUT)
     with process.stdout:
-        log_subprocess_output(process.stdout)
+        log_subprocess_output(process.stdout, logger=logger)
     exitscore = process.wait()
     return exitscore
 
@@ -131,7 +131,8 @@ def generate_users_output(diffacto_out={},
                           pval_threshold=0.05,
                           fc_threshold=2,
                           dynamic_fc_threshold=True,
-                          save = True,
+                          save = True, 
+                          logger = logging.getLogger('function')
                           ) :
     # diffacto_out = {
     #     'suf1': path_to_diffacto_results,
@@ -153,19 +154,19 @@ def generate_users_output(diffacto_out={},
         bonferroni = pval_threshold/len(table)
         table = table[ table['S/N'] > 0.01 ]
         if len(table[table['P(PECA)'] > bonferroni]['log2_FC']) < 100:
-            logging.info('Low number of proteins for FC dynamic threshold')
+            logger.info('Low number of proteins for FC dynamic threshold')
             dynamic_fc_threshold = 0
             fc_threshold = 0.5
     
         if not dynamic_fc_threshold :
             table = table[table['P(PECA)'] < bonferroni][['Protein', 'P(PECA)', 'log2_FC']]
-            logging.info('Static fold change threshold is applied')
+            logger.info('Static fold change threshold is applied')
             border_fc = fc_threshold
             table = table[abs(table['log2_FC']) > border_fc]
         else:
             t = table[table['P(PECA)'] > bonferroni]['log2_FC'].to_numpy()
             t = t[~np.isnan(t)]
-            w = opt_bin(t)
+            w = opt_bin(t, logger=logger)
             bbins = np.arange(min(t), max(t), w)
             H2, b2 = np.histogram(t, bins=bbins)
             m, mi, s = max(H2), b2[np.argmax(H2)], (max(t) - min(t))/6
@@ -174,7 +175,7 @@ def generate_users_output(diffacto_out={},
             shift, sigma = popt[1], abs(popt[2])
             right_fc_threshold = shift + 3*sigma
             left_fc_threshold = shift - 3*sigma
-            logging.info('Dynamic fold change threshold is applied for {}: {} {}'.format(suf, left_fc_threshold, right_fc_threshold, ))
+            logger.info('Dynamic fold change threshold is applied for {}: {} {}'.format(suf, left_fc_threshold, right_fc_threshold, ))
             table = table[table['P(PECA)'] < bonferroni][['Protein', 'P(PECA)', 'log2_FC']]
             table = table.query('`log2_FC` >= @right_fc_threshold or `log2_FC` <= @left_fc_threshold')
         comp_df = comp_df.merge(table, how='outer', on='Protein', suffixes = (None, '_'+suf))
@@ -200,7 +201,7 @@ def generate_users_output(diffacto_out={},
             col = 'log2_FC_'+suf
             dataset_dict[suf] = set(comp_df[comp_df[col].notna()]['Protein'])
         fig, ax = plt.subplots(1, 1, figsize=(16, 16))
-        venn(dataset_dict, cmap=plt.get_cmap('Dark2'), fontsize=28, alpha = 0.5, ax=ax)
+        v = venn(dataset_dict, cmap=plt.get_cmap('Dark2'), fontsize=28, alpha = 0.5, ax=ax)
         cmap=plt.get_cmap('Dark2')
         colors = {}
         c = [cmap(x) for x in np.arange(0, 1.5, 0.33)]
@@ -212,7 +213,7 @@ def generate_users_output(diffacto_out={},
         ]
         ax.legend(handles = legend_elements, fontsize = 24, markerscale = 2.5)
         plt.savefig(os.path.join(out_folder, 'venn.png'))
-        # logging.info('Venn diagram created')
+        # logger.info('Venn diagram created')
         
     return total_de_prots
 
@@ -225,7 +226,8 @@ def diffacto_call(diffacto_path='',
                   psm_dfs_dict={},
                   samples_dict={},
                   write_peptides=False,
-                  str_of_other_args=''
+                  str_of_other_args='', 
+                  logger = logging.getLogger('function')
                   ) :
     # samples_dict = {
     #     's1': ['rep_name1', 'rep_name2', ...]
@@ -242,11 +244,11 @@ def diffacto_call(diffacto_path='',
         samples += samples_dict[s]
     
     if not os.path.exists(diffacto_path) :
-        logging.critical('Existing path to diffacto file is required')
+        logger.critical('Existing path to diffacto file is required')
         return -1
     
     if write_peptides :
-        logging.info('Diffacto writing peptide file START')
+        logger.info('Diffacto writing peptide file START')
         df0 = psm_dfs_dict[samples[0]][['peptide', 'protein']]
         for sample in samples :
             psm_dfs_dict[sample].rename(columns={'intensity':sample}, inplace=True)
@@ -257,19 +259,19 @@ def diffacto_call(diffacto_path='',
                 )
         df0.fillna(value='', inplace=True)
         df0.to_csv(peptide_path, sep=',', index=False)
-        logging.info('DONE')
+        logger.info('DONE')
     else :
-        logging.info('Diffacto is using existing peptide file')
+        logger.info('Diffacto is using existing peptide file')
     
-    logging.info('Diffacto writing sample file START')
+    logger.info('Diffacto writing sample file START')
     out = open( sample_path , 'w')
     for sample_num in sample_nums :
         for sample in samples_dict[sample_num] :
             label = sample
             out.write(label + '\t' + sample_num + '\n')
-            logging.info(label + '\t' + sample_num)
+            logger.info(label + '\t' + sample_num)
     out.close()
-    logging.info('DONE')
+    logger.info('DONE')
     
     other_args = [x.strip() for x in str_of_other_args.split(' ')]
     final_args = [diffacto_path, 
@@ -278,17 +280,17 @@ def diffacto_call(diffacto_path='',
                   '-samples', sample_path, ] + ['-min_samples', min_samples] + other_args
     final_args = list(filter(lambda x: False if x=='' else True, final_args))
     final_args = [str(x) for x in final_args]
-    logging.info('Diffacto START')
+    logger.info('Diffacto START')
     process = subprocess.Popen(final_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     with process.stdout:
-        log_subprocess_output(process.stdout)
+        log_subprocess_output(process.stdout, logger=logger)
     exitscore = process.wait()
-    logging.debug(exitscore)
+    logger.debug(exitscore)
     
     if exitscore == 0 :
-        logging.info('DONE')
+        logger.info('DONE')
     else :
-        logging.critical('Diffacto error: ', exitscore)
+        logger.critical('Diffacto error: ', exitscore)
     
     return exitscore
 
@@ -303,6 +305,7 @@ def mix_intensity(input_dict,
                   out_dir=None,
                   default_order=None,
                   to_diffacto=None, 
+                  logger = logging.getLogger('function')
                   ) :
     # input_dict =   {'suf1' : path_to_diffacto_peptide_file
     #                 ...
@@ -319,7 +322,7 @@ def mix_intensity(input_dict,
     for s in sample_nums :
         samples += samples_dict[s]
     
-    logging.info('Merging START')
+    logger.info('Merging START')
     i = 0
     merge_df = pd.read_csv(input_dict[suffixes[0]], sep=',', usecols=['peptide', 'protein', ])
     for suf in suffixes :
@@ -340,7 +343,7 @@ def mix_intensity(input_dict,
     cols = [ col for col in merge_df.columns if col not in ['peptide', 'protein', ] ]
     merge_df.loc[:, cols].fillna(value=0, inplace=True)
 
-    logging.info('Merging DONE')
+    logger.info('Merging DONE')
     
     med_cv_to_corr = {}
     for suf in suffixes : 
@@ -418,11 +421,11 @@ def mix_intensity(input_dict,
         merge_df['tool'] = merge_df['tool'].apply(lambda x: x.split('_')[-1])
 
     else :
-        logging.critical('Invalid value for choice parameter: %s', choice)
+        logger.critical('Invalid value for choice parameter: %s', choice)
         raise ValueError('Invalid value for choice parameter: %s', choice)
         return -2
     
-    logging.info('Choosing intensities START')
+    logger.info('Choosing intensities START')
     out_dict = {}
     for sample in samples :
         cols = [x for x in merge_df.columns if x.startswith(sample)] + ['tool']
@@ -439,7 +442,7 @@ def mix_intensity(input_dict,
                       encoding = 'utf-8'
                     )
     
-    logging.info('Choosing intensities DONE')
+    logger.info('Choosing intensities DONE')
     if to_diffacto :
         cols = ['peptide', 'protein'] + [sample for sample in samples]
         merge_df.to_csv(to_diffacto, 
@@ -448,7 +451,7 @@ def mix_intensity(input_dict,
                         columns = cols, 
                         encoding = 'utf-8')
     
-    logging.info('Writing peptides files for Diffacto Mixed DONE')
+    logger.info('Writing peptides files for Diffacto Mixed DONE')
     if out_dir :
         merge_df.to_csv(os.path.join(out_dir, 'mixing_all.tsv'), 
                         sep='\t', 
@@ -456,7 +459,7 @@ def mix_intensity(input_dict,
                         columns = list(merge_df.columns), 
                         encoding = 'utf-8')
         
-    logging.info('Mixing intensities DONE')
+    logger.info('Mixing intensities DONE')
     if to_diffacto :
         return 0
     else :
@@ -473,7 +476,8 @@ def charge_states_intensity_processing(path,
                                        intens_colomn_name='feature_intensityApex',
                                        allowed_peptides=None, # set()
                                        allowed_prots=None, # set()
-                                       out_path=None
+                                       out_path=None, 
+                                       logger = logging.getLogger('function')
                                       ) :
     psm_df = pd.read_table(path, sep='\t')
     
@@ -481,7 +485,7 @@ def charge_states_intensity_processing(path,
     needed_cols = ['peptide', 'protein', 'assumed_charge', intens_colomn_name]
     for col in needed_cols :
         if col not in cols :
-            logging.critical('Not all needed columns are in file: '+col+' not exists')
+            logger.critical('Not all needed columns are in file: '+col+' not exists')
             raise ValueError('Not all needed columns are in file: '+col+' not exists')
     
     if allowed_peptides :
@@ -516,7 +520,7 @@ def charge_states_intensity_processing(path,
         psm_df = psm_df.drop_duplicates(['peptide'], keep='first')
     
     else :
-        logging.critical('Invalid value for method: %s', method)
+        logger.critical('Invalid value for method: %s', method)
         raise ValueError('Invalid value for method: %s', method)
 
     psm_df.rename(columns={intens_colomn_name: 'intensity'}, inplace = True)
@@ -601,7 +605,7 @@ def noisygaus(x, a, x0, sigma, b):
     return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2)) + b
 
 
-def opt_bin(ar, border=16) :
+def opt_bin(ar, border=16, logger = logging.getLogger('function')) :
     num_bins = 4
     bwidth = (max(ar) - min(ar))/num_bins
     bbins = np.arange(min(ar), max(ar), bwidth)
@@ -647,15 +651,15 @@ def opt_bin(ar, border=16) :
     bbins = np.arange(min(ar), max(ar), bwidth)
     H1, b1 = np.histogram(ar, bins=bbins)
     max_percent = 100*max(H1)/sum(H1)
-    logging.debug('final num_bins: ' + str(int(num_bins)) + '\t' + 'final max percent per bin: ' + str(round(max_percent, 2)) + '%')
+    logger.debug('final num_bins: ' + str(int(num_bins)) + '\t' + 'final max percent per bin: ' + str(round(max_percent, 2)) + '%')
 
     return bwidth
 
 
 
-def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False) :
+def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = logging.getLogger('function')) :
     
-    bwidth = opt_bin(true_md)
+    bwidth = opt_bin(true_md, logger=logger)
     bbins = np.arange(mass_left, mass_right, bwidth)
     H1, b1 = np.histogram(true_md, bins=bbins)
     noise_fraction = np.median(H1) * len(H1) / H1.sum()
@@ -671,12 +675,12 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False) :
         k += 1            
     w = (k-j)
     t = []
-#        logging.debug('Интервал значений ' + str(b1[ll]-bwidth) + ' ' + str(b1[rr]))
+#        logger.debug('Интервал значений ' + str(b1[ll]-bwidth) + ' ' + str(b1[rr]))
     for el in true_md :
         if el >= b1[i]-bwidth*(i-j) and el <= b1[i]+bwidth*(k-i) :
             t.append(el)
 
-    bwidth = opt_bin(t, border=min(8,8*0.5/noise_fraction))
+    bwidth = opt_bin(t, border=min(8,8*0.5/noise_fraction), logger=logger)
     bbins = np.arange(min(t), max(t) , bwidth)
     H2, b2 = np.histogram(t, bins=bbins)
     # pickle.dump(t, open('/home/leyla/project1/mbr/t.pickle', 'wb'))
@@ -687,20 +691,20 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False) :
 
     popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
     # popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
-    logging.debug(popt)
+    logger.debug(popt)
     mass_shift, mass_sigma = popt[1], abs(popt[2])
 
     if check_gauss:
-        logging.debug('GAUSS FIT, %f, %f' % (percentileofscore(t, mass_shift - 3 * mass_sigma), percentileofscore(t, mass_shift + 3 * mass_sigma)))
+        logger.debug('GAUSS FIT, %f, %f' % (percentileofscore(t, mass_shift - 3 * mass_sigma), percentileofscore(t, mass_shift + 3 * mass_sigma)))
 
         if percentileofscore(t, mass_shift - 3 * mass_sigma) + 100 - percentileofscore(t, mass_shift + 3 * mass_sigma) > 10:
             mass_sigma = scoreatpercentile(np.abs(t-mass_shift), 95) / 2
             
-    logging.debug('shift: ' + str(mass_shift) + '\t' + 'sigma: ' + str(mass_sigma))
+    logger.debug('shift: ' + str(mass_shift) + '\t' + 'sigma: ' + str(mass_sigma))
     return mass_shift, mass_sigma, pcov[0][0]
 
 
-def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mean_mz=0, mass_accuracy_ppm=10, mean_im = 0, sigma_im = False, isotopes_array=[0, ]):
+def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mean_mz=0, mass_accuracy_ppm=10, mean_im = 0, sigma_im = False, isotopes_array=[0, ], logger = logging.getLogger('function')):
 
     # df_features = df_features[['mz', 'charge', 'rtStart', 'rtEnd', 'id', 'intensityApex'б]]
     # print(mean1, sigma1, mean2, sigma2, mean_mz, mass_accuracy_ppm, mean_im, sigma_im , isotopes_array)
@@ -764,13 +768,13 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
                     psm_im = row['ionmobility']
                 else:
                     check_im = False
-                    logging.info('there is no column "IM" in the PSMs')
+                    logger.info('there is no column "IM" in the PSMs')
             if check_FAIMS:
                 if 'compensation_voltage' in row:
                     psm_FAIMS = row['compensation_voltage']
                 else:
                     check_FAIMS = False
-                    logging.info('there is no column "FAIMS" in the PSMs')
+                    logger.info('there is no column "FAIMS" in the PSMs')
             if psms_index not in results:
                 a = psm_mz/(1 - mean_mz*1e-6) -  i*1.003354/psm_charge 
                 mass_accuracy = mass_accuracy_ppm*1e-6*a
@@ -824,21 +828,21 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
     return results
 
 
-def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,sigma1=False,mean2=0,sigma2=False, mean_mz = 0, sigma_mz = False):
+def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,sigma1=False,mean2=0,sigma2=False, mean_mz = 0, sigma_mz = False, logger = logging.getLogger('function')):
 # sort ='mz_diff_ppm'
     check_gauss = False
     rtStart_array_ms1 = df_features['rtStart'].values
     rtEnd_array_ms1 = df_features['rtEnd'].values
 
     if parameters == 'rt1' or parameters == 'rt2':
-        results_psms = total(df_features = df_features,psms = psms,mass_accuracy_ppm = 100)
+        results_psms = total(df_features = df_features,psms = psms,mass_accuracy_ppm = 100, logger=logger)
 
     if parameters == 'mz_diff_ppm' :
         check_gauss = True
-        results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2,mass_accuracy_ppm = 100)
+        results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2,mass_accuracy_ppm = 100, logger=logger)
 
     if parameters == 'im_diff':
-        results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz)
+        results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, logger=logger)
 
         if 'im' in df_features.columns:
             im_array_ms1 = df_features['im'].values
@@ -860,44 +864,44 @@ def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,
             ar.append(sorted(value, key=lambda x: abs(x[sort]))[0][parameters])
 
     if parameters == 'rt1' or parameters == 'rt2':
-        mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss)
+        mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss, logger=logger)
     else:
-        mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss)
+        mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss, logger=logger)
     return mean, sigma
 
 
-def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_rt1=False,mean_rt2=False,sigma_rt2=False,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2]):
+def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_rt1=False,mean_rt2=False,sigma_rt2=False,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2], logger = logging.getLogger('function')):
     
     idx = {}
     for j, i in enumerate(isotopes_array):
         idx[i] = j
     
     if mean_rt1 is False and sigma_rt1 is False:
-        logging.debug('rt1')
-        mean_rt1, sigma_rt1 = found_mean_sigma(df_features,psms, 'rt1')
+        logger.debug('rt1')
+        mean_rt1, sigma_rt1 = found_mean_sigma(df_features,psms, 'rt1', logger=logger)
 
     if mean_rt2 is False and sigma_rt2 is False:
-        logging.debug('rt2')
-        mean_rt2, sigma_rt2 = found_mean_sigma(df_features,psms, 'rt2')
+        logger.debug('rt2')
+        mean_rt2, sigma_rt2 = found_mean_sigma(df_features,psms, 'rt2', logger=logger)
 
     if mean_mz is False and sigma_mz is False:
-        logging.debug('mz')
-        mean_mz, sigma_mz = found_mean_sigma(df_features,psms,'mz_diff_ppm', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2)   
+        logger.debug('mz')
+        mean_mz, sigma_mz = found_mean_sigma(df_features,psms,'mz_diff_ppm', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2, logger=logger)   
 
     if mean_im is False and sigma_im is False:
-        logging.debug('im')
-        mean_im, sigma_im = found_mean_sigma(df_features,psms,'im_diff', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2, mean_mz = mean_mz, sigma_mz= sigma_mz)  
+        logger.debug('im')
+        mean_im, sigma_im = found_mean_sigma(df_features,psms,'im_diff', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2, mean_mz = mean_mz, sigma_mz= sigma_mz, logger=logger)  
 
     # print(mean_rt1, sigma_rt1,mean_rt2, sigma_rt2,mean_mz, sigma_mz )    
 
-    results_isotope = total(df_features = df_features,psms =psms,mean1 = mean_rt1, sigma1 = 3*sigma_rt1,mean2 = mean_rt2, sigma2 = 3*sigma_rt2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, isotopes_array=isotopes_array)
+    results_isotope = total(df_features = df_features,psms =psms,mean1 = mean_rt1, sigma1 = 3*sigma_rt1,mean2 = mean_rt2, sigma2 = 3*sigma_rt2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, isotopes_array=isotopes_array, logger=logger)
     
     results_isotope_end = []
     cnt = Counter([z[0]['i'] for z in results_isotope.values()])
     for i in cnt.values():
         results_isotope_end.append(i/len(psms))
     end_isotope_ = list(np.add.accumulate(np.array(results_isotope_end))*100)
-    logging.info(end_isotope_)
+    logger.info(end_isotope_)
     df_features_dict = {}
     # intensity_dict = {}
     intensity_dict = defaultdict(float)
@@ -920,7 +924,7 @@ def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_r
 
 ## match between run
 
-def mbr(feat,II,PSMs_full_paths, PSM_path):
+def mbr(feat,II,PSMs_full_paths, PSM_path, logger=logging.getLogger('function')):
     II = II.sort_values(by = 'feature_intensityApex', ascending = False)
     II['pep_charge'] = II['peptide'] + II['assumed_charge'].map(str)
     II = II.drop_duplicates(subset = 'pep_charge')
@@ -933,13 +937,14 @@ def mbr(feat,II,PSMs_full_paths, PSM_path):
             psm_j_fdr = read_PSMs(j)
             psm_j_fdr['pep_charge'] = psm_j_fdr['peptide'] + psm_j_fdr['assumed_charge'].map(str)
             psm_j_fdr = psm_j_fdr[psm_j_fdr['pep_charge'].apply(lambda x: x not in found_set)]
-            III = optimized_search_with_isotope_error_(feat, psm_j_fdr, isotopes_array=[0,1,-1,2,-2])[0]
+            III = optimized_search_with_isotope_error_(feat, psm_j_fdr, isotopes_array=[0,1,-1,2,-2], logger=logger)[0]
             III = III.sort_values(by = 'feature_intensityApex', ascending = False)
             III = III.drop_duplicates(subset = 'pep_charge')
             II = pd.concat([II, III])
     return II
 
 
-def log_subprocess_output(pipe):
+def log_subprocess_output(pipe, logger = logging.getLogger('function') ):
     for line in iter(pipe.readline, b''): # b'\n'-separated lines
-        logging.info('From subprocess: %r', line)
+        logger.info('From subprocess: %r', line)
+        
