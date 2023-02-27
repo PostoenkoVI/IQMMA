@@ -75,7 +75,10 @@ def call_Dinosaur(path_to_fd, mzml_path, outdir, outname, str_of_other_args ) :
         other_args = ['--' + x.strip().replace(' ', '=') for x in str_of_other_args.strip('"').split('--')]
     else :
         other_args = []
-    final_args = [path_to_fd, mzml_path, '--outDir='+outdir, '--outName='+outname, ] + other_args
+    if path_to_fd.lower().endswith('jar') :
+        final_args = ['java', '-jar', path_to_fd, mzml_path, '--outDir='+outdir, '--outName='+outname, ] + other_args
+    else :
+        final_args = [path_to_fd, mzml_path, '--outDir='+outdir, '--outName='+outname, ] + other_args
     final_args = list(filter(lambda x: False if x=='--' else True, final_args))
     process = subprocess.Popen(final_args, 
                                stdout=subprocess.PIPE, 
