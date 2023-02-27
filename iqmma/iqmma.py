@@ -66,8 +66,8 @@ def run():
     parser.add_argument('-s1', nargs='+', help='input mzML files for sample 1 (also file names are the keys for searching other needed files)', type=str, default='', )
     parser.add_argument('-s2', nargs='*', help='input mzML files for sample 2 (also file names are the keys for searching other needed files)', type=str, default='', )
 #    parser.add_argument('-sampleNames', nargs='+', help='short names for samples for inner structure of results')
-    parser.add_argument('-PSM_folder', nargs='?', help='path to the folder with PSMs files', type=str, default='', const='')
-    parser.add_argument('-PSM_format', nargs='?', help='format or suffix to search PSMs files (may be PSMs_full.tsv or identipy.pep.xml for example)', type=str, default='PSMs_full.tsv', const='PSMs_full.tsv')
+    parser.add_argument('-psm_folder', nargs='?', help='path to the folder with PSMs files', type=str, default='', const='')
+    parser.add_argument('-psm_format', nargs='?', help='format or suffix to search PSMs files (may be PSMs_full.tsv or identipy.pep.xml for example)', type=str, default='PSMs_full.tsv', const='PSMs_full.tsv')
     parser.add_argument('-pept_folder', nargs='?', help='path to folder with files with peptides filtered on certain FDR (default: searching for them near PSMs)', type=str, default='', const='')
     parser.add_argument('-prot_folder', nargs='?', help='path to folder with files with proteins filtered on certain FDR (default: searching for them near PSMs)', type=str, default='', const='')
     
@@ -90,9 +90,9 @@ def run():
     parser.add_argument('-choice', nargs='?', help='method how to choose right intensities for peptide. 0 - default order and min Nan values, 1 - min Nan and min of sum CV, 2 - min Nan and min of max CV, 3 - min Nan and min of squared sum CV, 4 - min Nan and min of squared sum of corrected CV', type=int, default=4, const=4, choices=[0, 1, 2, 3, 4,])
     parser.add_argument('-norm', nargs='?', help='normalization method for intensities. Can be 1 - median or 0 - no normalization', type=int, default=0, const=0, choices=[0, 1])
     parser.add_argument('-isotopes', help='monoisotope error', nargs='+', type=int, default=[0,1,-1,2,-2])
-    parser.add_argument('-outPept', nargs='?', help='name of output diffacto peptides file (important: .txt)', type=str, default='peptides.txt', const='peptides.txt')
-    parser.add_argument('-outSampl', nargs='?', help='name of output diffacto samples file (important: .txt)', type=str, default='sample.txt', const='sample.txt')
-    parser.add_argument('-outDiff', nargs='?', help='name of diffacto output file (important: .txt)', type=str, default='diffacto_out.txt', const='diffacto_out.txt')
+    parser.add_argument('-outpept', nargs='?', help='name of output diffacto peptides file (important: .txt)', type=str, default='peptides.txt', const='peptides.txt')
+    parser.add_argument('-outsampl', nargs='?', help='name of output diffacto samples file (important: .txt)', type=str, default='sample.txt', const='sample.txt')
+    parser.add_argument('-outdiff', nargs='?', help='name of diffacto output file (important: .txt)', type=str, default='diffacto_out.txt', const='diffacto_out.txt')
     parser.add_argument('-min_samples', nargs='?', help='minimum number of samples for peptide usage, -1 means that half of the given number of files would be used', type=int, default=-1, const=-1)
     
     parser.add_argument('-mbr', nargs='?', help='match between runs (1 - on, 0 - off)', type=int, default=0, const=0, choices=[0, 1])
@@ -241,9 +241,9 @@ def run():
 
     PSMs_full_paths = []
     PSMs_full_dict = {}
-    PSMs_suf = args['PSM_format']
-    if args['PSM_folder'] :
-        dir_name = os.path.abspath(os.path.normpath(args['PSM_folder']))
+    PSMs_suf = args['psm_format']
+    if args['psm_folder'] :
+        dir_name = os.path.abspath(os.path.normpath(args['psm_folder']))
         if os.path.exists(dir_name) :
             logger.info('Searching *{} files in {}'.format( PSMs_suf, dir_name))
     else :
@@ -277,7 +277,7 @@ def run():
     if mode != 'feature matching' : 
         peptides_dict = {}
         peptides_suf = 'peptides.tsv'
-        if args['pept_folder'] and args['pept_folder'] != args['PSM_folder'] :
+        if args['pept_folder'] and args['pept_folder'] != args['psm_folder'] :
             if os.path.exists(os.path.normpath(args['pept_folder'])) :
                 dir_name = os.path.abspath(os.path.normpath(args['pept_folder']))
             else :
@@ -300,7 +300,7 @@ def run():
 
         proteins_dict = {}
         proteins_suf = 'proteins.tsv'
-        if args['prot_folder'] and args['prot_folder'] != args['PSM_folder'] :
+        if args['prot_folder'] and args['prot_folder'] != args['psm_folder'] :
             if os.path.exists(os.path.normpath(args['prot_folder'])) :
                 dir_name = os.path.abspath(os.path.normpath(args['prot_folder']))
             else :
@@ -371,8 +371,8 @@ def run():
             logger.warning('Path to feature files folder does not exist. Creating it.')
         feature_path = os.path.abspath(os.path.normpath(args['feature_folder']))
     else :
-        if args['PSM_folder'] :
-            dir_name = os.path.abspath(os.path.normpath(args['PSM_folder']))
+        if args['psm_folder'] :
+            dir_name = os.path.abspath(os.path.normpath(args['psm_folder']))
         else :
             dir_name = os.path.dirname(PSMs_full_paths[0])
         feature_path = os.path.join(dir_name,  'features')
@@ -569,9 +569,9 @@ def run():
                 )
                 logger.debug('Done %s', sample)
 
-            paths['DiffPept'][suf] = os.path.join(diffacto_folder, args['outPept'].replace('.txt', '_' + suf + '.txt'))
-            paths['DiffSampl'][suf] = os.path.join(diffacto_folder, args['outSampl'].replace('.txt', '_' + suf + '.txt'))
-            paths['DiffOut'][suf] = os.path.join(diffacto_folder, args['outDiff'].replace('.txt', '_' + suf + '.txt'))
+            paths['DiffPept'][suf] = os.path.join(diffacto_folder, args['outpept'].replace('.txt', '_' + suf + '.txt'))
+            paths['DiffSampl'][suf] = os.path.join(diffacto_folder, args['outsampl'].replace('.txt', '_' + suf + '.txt'))
+            paths['DiffOut'][suf] = os.path.join(diffacto_folder, args['outdiff'].replace('.txt', '_' + suf + '.txt'))
             if args['overwrite_first_diffacto'] == 1 or not os.path.exists( paths['DiffOut'][suf] ) :
                 exitscore = diffacto_call(diffacto_path = args['dif'],
                                           out_path = paths['DiffOut'][suf],
@@ -621,7 +621,7 @@ def run():
             suf = 'mixed'
             logger.info('Mixing intensities STARTED')
             
-            to_diffacto = os.path.join(diffacto_folder, args['outPept'].replace('.txt', '_' + suf + '.txt'))
+            to_diffacto = os.path.join(diffacto_folder, args['outpept'].replace('.txt', '_' + suf + '.txt'))
             a = mix_intensity(paths['DiffPept'],
                               samples_dict,
                               choice=args['choice'], 
@@ -635,8 +635,8 @@ def run():
             logger.info('Mixing intensities DONE with exitscore {}'.format(a))
             
             paths['DiffPept'][suf] = to_diffacto
-            paths['DiffSampl'][suf] = os.path.join(diffacto_folder, args['outSampl'].replace('.txt', '_' + suf + '.txt'))
-            paths['DiffOut'][suf] = os.path.join(diffacto_folder, args['outDiff'].replace('.txt', '_' + suf + '.txt'))
+            paths['DiffSampl'][suf] = os.path.join(diffacto_folder, args['outsampl'].replace('.txt', '_' + suf + '.txt'))
+            paths['DiffOut'][suf] = os.path.join(diffacto_folder, args['outdiff'].replace('.txt', '_' + suf + '.txt'))
             
             logger.info('Diffacto START')        
             exitscore = diffacto_call(diffacto_path = args['dif'],
