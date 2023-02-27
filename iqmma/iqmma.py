@@ -608,6 +608,9 @@ def run():
             logger=logger
         )
         
+        if sum(list(num_changed_prots.values()) == 0 :
+            logging.warning('No differentially expressed proteins detected in separate diffacto runs')
+        
         if args['choice'] == 0 :
             default_order = sorted(suffixes, key= lambda x: num_changed_prots[x], reverse=True)
         else : 

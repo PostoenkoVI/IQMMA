@@ -142,8 +142,17 @@ def generate_users_output(diffacto_out={},
     
     flag = True
     comp_df = False
+    i = 0
     for suf in suffixes :
-        table = pd.read_csv(diffacto_out[suf], sep = '\t')
+        try :
+            table = pd.read_csv(diffacto_out[suf], sep = '\t')
+        except :
+            i += 1
+            logger.critical('Something goes wrong with diffacto output file {}'.format(diffacto_out[suf]))
+            if i == len(suffixes) :
+                logger.critical('All diffacto output is unreadable')
+                return dict([(suf, 0) for suf in suffixes])
+            continue
         table['log2_FC'] = np.log2(table['s1']/table['s2'])
         table['FC'] = table['s1']/table['s2']
         table.sort_values('P(PECA)', ascending=True, inplace=True)
@@ -189,7 +198,6 @@ def generate_users_output(diffacto_out={},
     
     if save :
         comp_df.to_csv(os.path.join(out_folder, 'iqmma_results.tsv'), 
-
                        sep='\t',
                        index=False,
                        columns = list(comp_df.columns), 
