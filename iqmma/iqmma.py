@@ -472,7 +472,7 @@ def run():
 
     logger.info('Start matching features')
     for PSM_path, sample in zip(PSMs_full_paths, samples) :
-        PSM = read_PSMs(PSM_path)
+        PSM = read_PSMs(PSM_path, logger=logger)
         logger.info('sample %s', sample)
         for suf in suffixes :
             if args['overwrite_matching'] == 1 or not os.path.exists(os.path.join(matching_path, sample + '_' + suf + '.tsv')) :
