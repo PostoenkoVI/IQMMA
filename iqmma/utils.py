@@ -570,15 +570,17 @@ def read_PSMs(infile_path, usecols=None) :
                    inplace=True)
         df1['precursor_neutral_mass'] = df1['calculatedMassToCharge'] * df1['assumed_charge'] - df1['assumed_charge'] * 1.00727649
 
-    if set(df1['protein_descr'].str[0]) == {None}:
-        # MSFragger
-#        logger.debug('Adapting MSFragger DataFrame.')
-#        logger.debug('Proteins before: %s', df1.loc[1, 'protein'])
-        protein = df1['protein'].apply(lambda row: [x.split(None, 1) for x in row])
-        df1['protein'] = protein.apply(lambda row: [x[0] for x in row])
-#        logger.debug('Proteins after: %s', df1.loc[1, 'protein'])
-    
-    df1.loc[pd.isna(df1['protein_descr']), 'protein_descr'] = df1.loc[pd.isna(df1['protein_descr']), 'protein']
+    if 'protein_descr' in df1.columns:
+
+        if set(df1['protein_descr'].str[0]) == {None}:
+            # MSFragger
+    #        logger.debug('Adapting MSFragger DataFrame.')
+    #        logger.debug('Proteins before: %s', df1.loc[1, 'protein'])
+            protein = df1['protein'].apply(lambda row: [x.split(None, 1) for x in row])
+            df1['protein'] = protein.apply(lambda row: [x[0] for x in row])
+    #        logger.debug('Proteins after: %s', df1.loc[1, 'protein'])
+        
+        df1.loc[pd.isna(df1['protein_descr']), 'protein_descr'] = df1.loc[pd.isna(df1['protein_descr']), 'protein']
     df1 = df1[~pd.isna(df1['peptide'])]
 
     df1['spectrum'] = df1['spectrum'].apply(lambda x: x.split(' RTINS')[0])
