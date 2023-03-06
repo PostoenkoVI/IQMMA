@@ -811,6 +811,7 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
                         rt2 = rtE - psm_rt
                         # if  psm_rt  - mean1> rtS- interval1    and  psm_rt + mean2 < rtE +interval2:
                         if rt1 >= min(0, mean1 - interval1) and rt2 >= min(0, mean2 - interval2):
+
                             ms1_mz = mz_array_ms1[idx_current_ime]
                             mz_diff_ppm = (ms1_mz - a) / a * 1e6
                             rt_diff = (rtE - rtS)/2+rtS - psm_rt
@@ -908,7 +909,7 @@ def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_r
 
     # print(mean_rt1, sigma_rt1,mean_rt2, sigma_rt2,mean_mz, sigma_mz )    
 
-    results_isotope = total(df_features = df_features,psms =psms,mean1 = mean_rt1, sigma1 = 3*sigma_rt1,mean2 = mean_rt2, sigma2 = 3*sigma_rt2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, isotopes_array=isotopes_array, logger=logger)
+    results_isotope = total(df_features = df_features,psms =psms,mean1 = mean_rt1, sigma1 = sigma_rt1,mean2 = mean_rt2, sigma2 = sigma_rt2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, isotopes_array=isotopes_array, logger=logger)
     
     results_isotope_end = []
     cnt = Counter([z[0]['i'] for z in results_isotope.values()])
