@@ -544,7 +544,7 @@ def charge_states_intensity_processing(path,
     return psm_df
 
 
-def read_PSMs(infile_path, usecols=None) :
+def read_PSMs(infile_path, usecols=None, logger=logging.getLogger('function')) :
     if infile_path.endswith('.tsv') :
         df1 = pd.read_csv(infile_path, sep = '\t', usecols=usecols)            
     elif infile_path.lower().endswith('.pep.xml') or infile_path.lower().endswith('.pepxml') :
@@ -604,6 +604,10 @@ def read_PSMs(infile_path, usecols=None) :
         cols.append('compensation_voltage')
         
     df1 = df1[cols]
+
+    if len(df1['spectrum']) != len(set(df1['spectrum'])):
+        logger.warning('\nWARNING! Spectrum column values are not unique. Spectrum column values were modified to fix it!\n')
+        df1['spectrum'] = df1['spectrum'] + '_' + np.arange(len(df1)).astype(str)
     
     return df1
 
