@@ -676,7 +676,7 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = l
     bwidth = opt_bin(true_md, logger=logger)
     bbins = np.arange(mass_left, mass_right, bwidth)
     H1, b1 = np.histogram(true_md, bins=bbins)
-    noise_fraction = np.median(H1) * len(H1) / H1.sum()
+    noise_fraction = max(1, np.median(H1)) * len(H1) / H1.sum()
 
     H_marg = np.median(H1)
     i = np.argmax(H1)
