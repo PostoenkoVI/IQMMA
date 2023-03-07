@@ -75,7 +75,7 @@ Full option's description could be obtained with:
 
 Multiple formats could be used for input PSMs files. In simple matching mode it could be .tsv Identipy output or .pep.xml (.pepxml) from Identipy or MSFragger output or .mzid from msgf+ output or user's .tsv table with specified columns. However, -PSM_format parameter should be applied when using other formats except standart.
 
-Columns: 'spectrum' - MS/MS spectrum id for peptide, 'peptide' - peptide sequence, 'protein' - protein name, related to this peptide, 'assumed_charge' - charge of the peptide, 'precursor_neutral_mass' - mass of the neutral peptide calculated by the formula 'precursor_neutral_mass' = mz * charge - charge * 1.00727649, 'RT exp' - experimental Retention Time of the peptide. 
+Columns: 'spectrum' - MS/MS spectrum id for peptide (it should be unique), 'peptide' - peptide sequence, 'protein' - protein name, related to this peptide, 'assumed_charge' - charge of the peptide, 'precursor_neutral_mass' - mass of the neutral peptide calculated by the formula 'precursor_neutral_mass' = mz * charge - charge * 1.00727649, 'RT exp' - experimental Retention Time of the peptide. 
 
 For full quantitation mode PSMs files assumed to be PSMs_full.tsv tables of Scavager output.
 
