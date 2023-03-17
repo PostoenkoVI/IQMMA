@@ -68,8 +68,8 @@ def run():
 #    parser.add_argument('-sampleNames', nargs='+', help='short names for samples for inner structure of results')
     parser.add_argument('-psm_folder', nargs='?', help='path to the folder with PSMs files', type=str, default='', const='')
     parser.add_argument('-psm_format', nargs='?', help='format or suffix to search PSMs files (may be PSMs_full.tsv or identipy.pep.xml for example)', type=str, default='PSMs_full.tsv', const='PSMs_full.tsv')
-    parser.add_argument('-pept_folder', nargs='?', help='path to folder with files with peptides filtered on certain FDR (default: searching for them near PSMs)', type=str, default='', const='')
-    parser.add_argument('-prot_folder', nargs='?', help='path to folder with files with proteins filtered on certain FDR (default: searching for them near PSMs)', type=str, default='', const='')
+    parser.add_argument('-pept_folder', nargs='?', help='path to folder with files (filename starts with the name of .mzML and ends with peptides.tsv) with peptides filtered on certain FDR (default: searching for them near PSMs)', type=str, default='', const='')
+    parser.add_argument('-prot_folder', nargs='?', help='path to folder with files (filename starts with the name of .mzML and ends with proteins.tsv) with proteins filtered on certain FDR (default: searching for them near PSMs)', type=str, default='', const='')
     
     parser.add_argument('-dino', nargs='?', help='path to Dinosaur', type=str, default='', const='')
 #    parser.add_argument('-bio', nargs='?', help='path to Biosaur', type=str, default='', const='')
