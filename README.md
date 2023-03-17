@@ -51,6 +51,12 @@ Matching mode (Anaconda, Windows paths):
 
 Here there are two samples in one replica each to match on peptides identifications that are stored in files `-psm_folder` + `\` + (.mzml filename) + `-psm_format` which results in `c:\user\downloads\mzid_peptides\` + `sample1_rep1` + `.mzid`. Two feature detections are given (paths to executable files are given), so there would be two rows of matched files in the `-outdir` in the end: Dinosaur-generated features matched (ends with `_dino.tsv`) on peptides and Biosaur2-generated (ends with `_bio2.tsv`) features matched on peptides.
 
+Full quantitation mode with peptides and proteins filtering (Linux-based example):
+
+    iqmma -bio2 /usr/bin/biosaur2 -dino /home/user/downloads/Dinosaur-1.2.0.free.jar -dif /usr/bin/diffacto -s1 /home/user/downloads/sample1_rep1.mzml /home/user/downloads/sample1_rep2.mzml -s2 /home/user/downloads/sample2_rep1.mzml /home/user/downloads/sample2_rep2.mzml -logs INFO -log_path /home/user/iqmma_logs/logs_N.log -prot_folder /home/user/downloads/post_search -pept_folder /home/user/downloads/post_search
+
+Here, same samples, as in the first example, but user made additional post search analysis and received files (for example as in Scavager: one per .mzML file) with peptides and proteins filtered at 1% FDR, for example. `-pept_folder` parameters allow to point directories where `iqmma` could find that files to use only 1%FDR peptides in quantitation. If `-pept_folder` parameter is applied, `iqmma` will try to find all files which name starts with the name of one of .mzML files and ends with `peptides.tsv` (here these names would be like `sample1_rep1*peptides.tsv`) then read from that file only the column (`peptide`) with peptide sequences and join all peptides from all files that were found in one set, and then only peptides from that set will be allowed to quantification. `-prot_folder` parameter behaves similarly with column name `dbname` and filename suffix `proteins.tsv`. So, for custom usage, one file (like `/home/user/downloads/post_search/sample1_rep1*peptides.tsv`) with all needed peptides is enough.
+
 Note 1: Paths to feature detections or Diffacto should be paths to its executable files. In Linux-based systems, executable files are usually stored in `/usr/bin/`; on Windows with Anaconda - in `C:\User\Anaconda3\Scripts` or `C:\User\Anaconda3\envs\current_environment\Scripts`.
 
 Note 2: To use Dinosaur, java should be installed in the environment.
