@@ -277,46 +277,53 @@ def run():
     if mode != 'feature matching' : 
         peptides_dict = {}
         peptides_suf = 'peptides.tsv'
-        if args['pept_folder'] and args['pept_folder'] != args['psm_folder'] :
-            if os.path.exists(os.path.normpath(args['pept_folder'])) :
-                dir_name = os.path.abspath(os.path.normpath(args['pept_folder']))
+        if args['pept_folder'] :
+            if args['pept_folder'] != args['psm_folder'] :
+                if os.path.exists(os.path.normpath(args['pept_folder'])) :
+                    dir_name = os.path.abspath(os.path.normpath(args['pept_folder']))
+                else :
+                    logger.critical('path to peptides files folder does not exist')
+                    return -1
             else :
-                logger.critical('path to peptides files folder does not exist')
-                return -1
+                logger.warning('trying to find *%s files in the same directory as PSMs', peptides_suf)
+                dir_name = os.path.dirname(PSMs_full_paths[0])
+                logger.debug(dir_name)
+            for sample in samples :
+                i = 0
+                for filename in os.listdir(dir_name) :
+                    if filename.startswith(sample) and filename.endswith(peptides_suf) :
+                        peptides_dict[sample] = os.path.join(dir_name, filename)
+                        logger.info('Peptides from file {} are allowed for quantitative analysis'.format(peptides_dict[sample]))
+                        logger.debug(os.path.join(dir_name, filename))
+                        i += 1
+                if i == 0 :
+                    logger.debug('sample '+ sample + ' peptides file not found in ' + dir_name)
         else :
-            logger.warning('trying to find *%s files in the same directory as PSMs', peptides_suf)
-            dir_name = os.path.dirname(PSMs_full_paths[0])
-            logger.debug(dir_name)
-        for sample in samples :
-            i = 0
-            for filename in os.listdir(dir_name) :
-                if filename.startswith(sample) and filename.endswith(peptides_suf) :
-                    peptides_dict[sample] = os.path.join(dir_name, filename)
-                    logger.debug(os.path.join(dir_name, filename))
-                    i += 1
-            if i == 0 :
-                logger.critical('sample '+ sample + ' peptides file not found in ' + dir_name)
-                return -1
+            logger.info('All peptides are allowed for quantitative analysis')
 
         proteins_dict = {}
         proteins_suf = 'proteins.tsv'
-        if args['prot_folder'] and args['prot_folder'] != args['psm_folder'] :
-            if os.path.exists(os.path.normpath(args['prot_folder'])) :
-                dir_name = os.path.abspath(os.path.normpath(args['prot_folder']))
+        if args['prot_folder'] :
+            if args['prot_folder'] != args['psm_folder'] :
+                if os.path.exists(os.path.normpath(args['prot_folder'])) :
+                    dir_name = os.path.abspath(os.path.normpath(args['prot_folder']))
+                else :
+                    logger.critical('path to proteins files folder does not exist')
+                    return -1
             else :
-                logger.critical('path to proteins files folder does not exist')
+                logger.warning('Searching *{} files in the same directory as PSMs'.format(proteins_suf))
+                dir_name = os.path.dirname(PSMs_full_paths[0])
+            for sample in samples :
+                i = 0
+                for filename in os.listdir(dir_name) :
+                    if filename.startswith(sample) and filename.endswith(proteins_suf) :
+                        proteins_dict[sample] = os.path.join(dir_name, filename)
+                        logger.info('Proteins from file {} are allowed for quantitative analysis'.format(proteins_dict[sample]))
+                        i += 1
+                if i == 0 :
+                    logger.debug('sample '+ sample + ' proteins file not found')
         else :
-            logger.warning('Searching *_proteins.tsv files in the same directory as PSMs')
-            dir_name = os.path.dirname(PSMs_full_paths[0])
-        for sample in samples :
-            i = 0
-            for filename in os.listdir(dir_name) :
-                if filename.startswith(sample) and filename.endswith(proteins_suf) :
-                    proteins_dict[sample] = os.path.join(dir_name, filename)
-                    i += 1
-            if i == 0 :
-                logger.critical('sample '+ sample + ' proteins file not found')
-                return -1
+            logger.info('All proteins are allowed for quantitative analysis')
     
     paths = {'mzML': mzML_dict, 
              'PSM_full' : PSMs_full_dict,
@@ -531,17 +538,24 @@ def run():
             intens_colomn_name = 'med_norm_feature_intensityApex'
         else :
             intens_colomn_name = 'feature_intensityApex'
-
+        
         allowed_prots = set()
+        if paths['proteins'] :    
+            for key in paths['proteins'].keys() :
+                df0 = pd.read_table(paths['proteins'][key], usecols=['dbname'])
+                allowed_prots.update(df0['dbname'])
+            logger.debug('allowed proteins total: %d', len(allowed_prots))
+        else :
+            logger.debug('allowed proteins total: all')
+        
         allowed_peptides = set()
-        for sample in samples :
-            df0 = pd.read_table(paths['proteins'][sample])
-            allowed_prots.update(df0['dbname'])
-        for sample in samples :
-            df0 = pd.read_table(paths['peptides'][sample])
-            allowed_peptides.update(df0['peptide'])
-        logger.debug('allowed proteins total: %d', len(allowed_prots))
-        logger.debug('allowed peptides total: %d', len(allowed_peptides))
+        if paths['peptides'] :
+            for key in paths['peptides'].keys() :
+                df0 = pd.read_table(paths['peptides'][key], usecols=['peptide'])
+                allowed_peptides.update(df0['peptide'])
+            logger.debug('allowed peptides total: %d', len(allowed_peptides))
+        else :
+            logger.debug('allowed peptides total: all')
 
         paths['DiffPept'] = {}
         paths['DiffSampl'] = {}
@@ -558,14 +572,13 @@ def run():
                 else :
                     out_path = None
                     charge_faims_intensity_path = None
-                psms_dict[sample] = charge_states_intensity_processing(
-                    paths['feats_matched'][sample][suf],
-                    method=args['pept_intens'], 
-                    intens_colomn_name='feature_intensityApex', 
-                    allowed_peptides=allowed_peptides, # set()
-                    allowed_prots=allowed_prots, # set()
-                    out_path=out_path,
-                    logger=logger
+                psms_dict[sample] = charge_states_intensity_processing(paths['feats_matched'][sample][suf],
+                                                                        method=args['pept_intens'], 
+                                                                        intens_colomn_name='feature_intensityApex', 
+                                                                        allowed_peptides=allowed_peptides, # set()
+                                                                        allowed_prots=allowed_prots, # set()
+                                                                        out_path=out_path,
+                                                                        logger=logger
                 )
                 logger.debug('Done %s', sample)
 
