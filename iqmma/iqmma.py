@@ -63,7 +63,7 @@ def run():
     parser.add_argument('-example_cfg', nargs='?', help='Path to create example config .ini file or not if not stated', type=str, default='', const='')
     parser.add_argument('-dif', nargs='?', help='path to Diffacto', type=str, default='', const='')
 #    parser.add_argument('-scav2dif', help='path to scav2diffacto')
-    parser.add_argument('-s1', nargs='+', help='input mzML files for sample 1 (also file names are the keys for searching other needed files)', type=str, default='', )
+    parser.add_argument('-s1', nargs='*', help='input mzML files for sample 1 (also file names are the keys for searching other needed files)', type=str, default='', )
     parser.add_argument('-s2', nargs='*', help='input mzML files for sample 2 (also file names are the keys for searching other needed files)', type=str, default='', )
 #    parser.add_argument('-sampleNames', nargs='+', help='short names for samples for inner structure of results')
     parser.add_argument('-psm_folder', nargs='?', help='path to the folder with PSMs files', type=str, default='', const='')
@@ -128,7 +128,6 @@ def run():
             args.update({k: users_config[k]})
     for k in console_keys :
         args.update({k: console_config[k]})
-        
     
     loglevel = args['logs'].upper()
     numeric_level = getattr(logging, loglevel, None)
@@ -169,6 +168,10 @@ def run():
             return 1
     
     logger.debug(args)
+    
+    if not args['s1'] :
+        logger.critical('At least one file in the argument is needed: -s1 {}'.format(args['s1']))
+        raise ValueError('At least one file in the argument is needed: -s1 {}'.format(args['s1']))
     
     mode = None
     if not args['s2'] :

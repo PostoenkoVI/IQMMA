@@ -48,12 +48,12 @@ def read_cfg(file, category) :
             final.append(key)
 
             if value :
-                if not value.startswith('"') or not value.startswith("'") :
+                if value.startswith('\"') or value.startswith("\'") :
+                    final.append(value)
+                else :
                     vals = value.split()
                     for v in vals :
                         final.append(v)
-                else :
-                    final.append(value)
     return final, keys
 
 
@@ -63,7 +63,10 @@ def write_example_cfg(path, dct_args):
         f.write('[DEFAULT]\n')
         for k, v in dct_args.items() :
             if type(v) != list :
-                f.write(k + ' = ' + str(v) + '\n')
+                if type(v) == str and v.startswith('-') :
+                    f.write(k + ' = ' + '\"' + str(v) + '\"' + '\n')
+                else :
+                    f.write(k + ' = ' + str(v) + '\n')
             else :
                 f.write(k + ' = ' + ' '.join([str(el) for el in v]) + '\n')
         f.write('\n[users_category]\n')
@@ -72,7 +75,7 @@ def write_example_cfg(path, dct_args):
 
 def call_Dinosaur(path_to_fd, mzml_path, outdir, outname, str_of_other_args, logger = logging.getLogger('function') ) :
     if str_of_other_args :
-        other_args = ['--' + x.strip().replace(' ', '=') for x in str_of_other_args.strip('"').split('--')]
+        other_args = ['--' + x.strip().replace(' ', '=') for x in str_of_other_args.strip('"').strip("'").split('--')]
     else :
         other_args = []
     if path_to_fd.lower().endswith('jar') :
@@ -91,7 +94,7 @@ def call_Dinosaur(path_to_fd, mzml_path, outdir, outname, str_of_other_args, log
 
 def call_Biosaur2(path_to_fd, mzml_path, outpath, str_of_other_args, logger = logging.getLogger('function')) :
     if str_of_other_args :
-        other_args = [x.strip() for x in str_of_other_args.strip('"').split(' ')]
+        other_args = [x.strip() for x in str_of_other_args.strip('"').strip("'").split(' ')]
     else :
         other_args = []
     final_args = [path_to_fd, mzml_path, '-o', outpath, ] + other_args
@@ -106,7 +109,7 @@ def call_Biosaur2(path_to_fd, mzml_path, outpath, str_of_other_args, logger = lo
 
 def call_OpenMS(path_to_fd, mzml_path, outpath, str_of_other_args, logger = logging.getLogger('function')) :
     if str_of_other_args :
-        other_args = [x.strip() for x in str_of_other_args.strip('"').split(' ')]
+        other_args = [x.strip() for x in str_of_other_args.strip('"').strip("'").split(' ')]
     else :
         other_args = []
     final_args = [path_to_fd, 
@@ -281,7 +284,7 @@ def diffacto_call(diffacto_path='',
     out.close()
     logger.info('DONE')
     
-    other_args = [x.strip() for x in str_of_other_args.split(' ')]
+    other_args = [x.strip() for x in str_of_other_args.strip("'").strip('"').split(' ')]
     final_args = [diffacto_path, 
                   '-i', peptide_path, 
                   '-out', out_path, 
