@@ -285,7 +285,7 @@ def run():
                 if os.path.exists(os.path.normpath(args['pept_folder'])) :
                     dir_name = os.path.abspath(os.path.normpath(args['pept_folder']))
                 else :
-                    logger.critical('path to peptides files folder does not exist')
+                    logger.critical('path to peptides files folder does not exist: {}'.format(os.path.normpath(args['pept_folder'])))
                     return -1
             else :
                 logger.warning('trying to find *%s files in the same directory as PSMs', peptides_suf)
@@ -311,7 +311,7 @@ def run():
                 if os.path.exists(os.path.normpath(args['prot_folder'])) :
                     dir_name = os.path.abspath(os.path.normpath(args['prot_folder']))
                 else :
-                    logger.critical('path to proteins files folder does not exist')
+                    logger.critical('path to proteins files folder does not exist: {}'.format(os.path.normpath(args['pept_folder'])))
                     return -1
             else :
                 logger.warning('Searching *{} files in the same directory as PSMs'.format(proteins_suf))
