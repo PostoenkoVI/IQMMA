@@ -191,7 +191,7 @@ def generate_users_output(diffacto_out={},
             table = table[table['P(PECA)'] < bonferroni][['Protein', 'P(PECA)', 'log2_FC']]
             table = table.query('`log2_FC` >= @right_fc_threshold or `log2_FC` <= @left_fc_threshold')
         comp_df = comp_df.merge(table, how='outer', on='Protein', suffixes = (None, '_'+suf))
-    comp_df.rename(columns={'log2_FC': 'log2_FC_'+suffixes[0], 'P(PECA)': 'P(PECA)'+suffixes[0] }, inplace=True )
+    comp_df.rename(columns={'log2_FC': 'log2_FC_'+suffixes[0], 'P(PECA)': 'P(PECA)_'+suffixes[0] }, inplace=True )
     comp_df.dropna(how = 'all', subset=['log2_FC_' + suf for suf in suffixes], inplace=True)
     # comp_df.loc['Total number', :] = df0.notna().sum(axis=0)
     
