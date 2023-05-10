@@ -583,7 +583,7 @@ def run():
                     charge_faims_intensity_path = None
                 psms_dict[sample] = charge_states_intensity_processing(paths['feats_matched'][sample][suf],
                                                                         method=args['pept_intens'], 
-                                                                        intens_colomn_name='feature_intensityApex', 
+                                                                        intens_colomn_name=intens_colomn_name, 
                                                                         allowed_peptides=allowed_peptides, # set()
                                                                         allowed_prots=allowed_prots, # set()
                                                                         out_path=out_path,
