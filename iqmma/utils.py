@@ -28,7 +28,7 @@ def read_cfg(file, category) :
     cfg_string = f[start:end]
     while '#' in cfg_string :
         l = cfg_string.find('#')
-        r = cfg_string.find('\n', l) + 2
+        r = cfg_string.find('\n', l) + 1
         cfg_string = cfg_string[:l] + cfg_string[r:]
 
     lst_of_strings = cfg_string.lstrip().split('\n')
