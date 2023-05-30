@@ -88,7 +88,7 @@ def run():
     parser.add_argument('-venn', nargs='?', help='whether to plot venn diagrams (1) or not (0)', type=int, default=1, const=1, choices=[0, 1])
     parser.add_argument('-pept_intens', nargs='?', help='max_intens - as intensity for peptide would be taken maximal intens between charge states; summ_intens - as intensity for peptide would be taken sum of intens between charge states; z-attached - each charge state would be treated as independent peptide', type=str, default='z-attached', const='z-attached', choices=['z-attached', 'summ_intens', 'max_intens'])
     parser.add_argument('-choice', nargs='?', help='method how to choose right intensities for peptide. 0 - default order and min Nan values, 1 - min Nan and min of sum CV, 2 - min Nan and min of max CV, 3 - min Nan and min of squared sum CV, 4 - min Nan and min of squared sum of corrected CV', type=int, default=4, const=4, choices=[0, 1, 2, 3, 4,])
-    parser.add_argument('-norm', nargs='?', help='normalization method for intensities. Can be 1 - median or 0 - no normalization', type=int, default=0, const=0, choices=[0, 1])
+    parser.add_argument('-norm', nargs='?', help='normalization method for intensities. Can be 3 - max, 2 - min, 1 - median or 0 - no normalization', type=int, default=0, const=0, choices=[0, 1, 2, 3])
     parser.add_argument('-isotopes', help='monoisotope error', nargs='+', type=int, default=[0,1,-1,2,-2])
     parser.add_argument('-outpept', nargs='?', help='name of output diffacto peptides file (important: .txt)', type=str, default='peptides.txt', const='peptides.txt')
     parser.add_argument('-outsampl', nargs='?', help='name of output diffacto samples file (important: .txt)', type=str, default='sample.txt', const='sample.txt')
@@ -498,6 +498,8 @@ def run():
 
                 median = temp_df['feature_intensityApex'].median()
                 temp_df['med_norm_feature_intensityApex'] = temp_df['feature_intensityApex']/median
+                temp_df['min_norm_feature_intensityApex'] = temp_df['feature_intensityApex']/temp_df['feature_intensityApex'].min()
+                temp_df['max_norm_feature_intensityApex'] = temp_df['feature_intensityApex']/temp_df['feature_intensityApex'].max()
                 cols = list(temp_df.columns)
                 
                 logger.info(suf + ' features ' + sample + ' DONE')
@@ -537,9 +539,13 @@ def run():
         os.makedirs(diffacto_folder, exist_ok=True)
 
         intens_colomn_name = 'feature_intensityApex'
-        if args['norm'] == 1 :
+        if args['norm'] == 3 :
+            intens_colomn_name = 'max_norm_feature_intensityApex'
+        elif args['norm'] == 2 :
+            intens_colomn_name = 'min_norm_feature_intensityApex'
+        elif args['norm'] == 1 :
             intens_colomn_name = 'med_norm_feature_intensityApex'
-        else :
+        elif args['norm'] == 0 :
             intens_colomn_name = 'feature_intensityApex'
         
         allowed_prots = set()
@@ -577,7 +583,7 @@ def run():
                     charge_faims_intensity_path = None
                 psms_dict[sample] = charge_states_intensity_processing(paths['feats_matched'][sample][suf],
                                                                         method=args['pept_intens'], 
-                                                                        intens_colomn_name='feature_intensityApex', 
+                                                                        intens_colomn_name=intens_colomn_name, 
                                                                         allowed_peptides=allowed_peptides, # set()
                                                                         allowed_prots=allowed_prots, # set()
                                                                         out_path=out_path,

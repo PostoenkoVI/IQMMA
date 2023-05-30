@@ -113,7 +113,7 @@ In terms of the amount of time some stages of analysis could consume, `iqmma` tr
 
 - Biosaur2 repo: https://github.com/markmipt/biosaur2
 
-- OpenMS guide: https://abibuilder.cs.uni-tuebingen.de/archive/openms/Documentation/release/latest/html/index.html
+- OpenMS guide: https://openms.readthedocs.io/en/latest/openms-applications-and-tools/installation.html
 
 - Pypi: https://pypi.org/project/iqmma/
 
