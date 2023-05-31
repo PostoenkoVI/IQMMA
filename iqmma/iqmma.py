@@ -474,7 +474,8 @@ def run():
         if os.path.exists(args['matching_folder']) :
             matching_path = os.path.abspath(os.path.normpath(args['matching_folder']))
         else :
-            pass
+            matching_path = os.path.abspath(os.path.normpath(args['matching_folder']))
+            logger.warning('Path to matching folder does not exists, creating it: {}'.format(matching_path))
     else :
         matching_path = os.path.join(out_directory, 'feats_matched')
         logger.warning('Path to matching folder does not exists, using default one: {}'.format(matching_path))
