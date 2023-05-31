@@ -7,7 +7,8 @@ Using pip:
 
     pip install iqmma
 
-It will install, if necessary, the minimum set (Biosaur2 and Diffacto) to `iqmma` to function. However, additional feature detections will need to be installed manually according to their manuals (see links below).
+It will install, if necessary, the minimum set (Biosaur2 and Diffacto) to `iqmma` to function. 
+Detailed instruction how to install additional feature detections and some general tooltips are in the [IQMMA_installation_guide.pdf](./IQMMA_installation_guide.pdf).
 
 ## Usage
 
