@@ -132,6 +132,7 @@ def generate_users_output(diffacto_out={},
                           out_folder='',
                           plot_venn=True,
                           pval_threshold=0.05,
+                          pval_adj='Bonf',
                           fc_threshold=2,
                           dynamic_fc_threshold=True,
                           save = True, 
@@ -162,21 +163,29 @@ def generate_users_output(diffacto_out={},
         if flag :
             comp_df = table[['Protein']]
             flag = False
-
-        bonferroni = pval_threshold/len(table)
+        if pval_adj == 'Bonf' :
+            bonferroni = pval_threshold/len(table)
+            table['pval_adj_pass'] = table['P(PECA)'] <= bonferroni
+        elif pval_adj == 'BH' :
+            l = len(table)
+            table['BH'] = pd.Series([(i+1)*pval_threshold/l for i in range(l)], index=table.index)
+            table['pval_adj_pass'] = table['P(PECA)'] <= table['BH']
+        else :
+            logger.critical('Wrong value for the `pval_adj` argument')
+            return dict([(suf, 0) for suf in suffixes])
+        
         table = table[ table['S/N'] > 0.01 ]
-        if len(table[table['P(PECA)'] > bonferroni]['log2_FC']) < 100:
+        
+        if len(table[~table['pval_adj_pass']]['log2_FC']) < 100:
             logger.info('Low number of proteins for FC dynamic threshold')
             dynamic_fc_threshold = 0
-            fc_threshold = 0.5
-    
         if not dynamic_fc_threshold :
-            table = table[table['P(PECA)'] < bonferroni][['Protein', 'P(PECA)', 'log2_FC']]
+            table = table[table['pval_adj_pass']][['Protein', 'P(PECA)', 'log2_FC']]
             logger.info('Static fold change threshold is applied')
             border_fc = fc_threshold
             table = table[abs(table['log2_FC']) > border_fc]
         else:
-            t = table[table['P(PECA)'] > bonferroni]['log2_FC'].to_numpy()
+            t = table[~table['pval_adj_pass']]['log2_FC'].to_numpy()
             t = t[~np.isnan(t)]
             w = opt_bin(t, logger=logger)
             bbins = np.arange(min(t), max(t), w)
@@ -188,7 +197,7 @@ def generate_users_output(diffacto_out={},
             right_fc_threshold = shift + 3*sigma
             left_fc_threshold = shift - 3*sigma
             logger.info('Dynamic fold change threshold is applied for {}: {} {}'.format(suf, left_fc_threshold, right_fc_threshold, ))
-            table = table[table['P(PECA)'] < bonferroni][['Protein', 'P(PECA)', 'log2_FC']]
+            table = table[table['pval_adj_pass']][['Protein', 'P(PECA)', 'log2_FC']]
             table = table.query('`log2_FC` >= @right_fc_threshold or `log2_FC` <= @left_fc_threshold')
         comp_df = comp_df.merge(table, how='outer', on='Protein', suffixes = (None, '_'+suf))
     comp_df.rename(columns={'log2_FC': 'log2_FC_'+suffixes[0], 'P(PECA)': 'P(PECA)_'+suffixes[0] }, inplace=True )
@@ -224,7 +233,7 @@ def generate_users_output(diffacto_out={},
         ]
         ax.legend(handles = legend_elements, fontsize = 24, markerscale = 2.5)
         plt.savefig(os.path.join(out_folder, 'venn.png'))
-        # logger.info('Venn diagram created')
+        logger.info('Venn diagram created')
         
     return total_de_prots
 
