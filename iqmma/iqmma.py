@@ -99,6 +99,7 @@ def run():
     parser.add_argument('-pval_threshold', nargs='?', help='P-value threshold for reliable differetially expressed proteins', type=float, default=0.05, const=0.05)
     parser.add_argument('-fc_threshold', nargs='?', help='Fold change threshold for reliable differetially expressed proteins', type=float, default=2., const=2.)
     parser.add_argument('-dynamic_fc_threshold', nargs='?', help='whether to apply dynamically calculated threshold (1) or not and use static -fc_threshold (0) ', type=int, default=1, const=1, choices=[0, 1])
+    parser.add_argument('-pval_adj', nargs='?', help='P value adjustment method for multiple comparisons: Bonf - Bonferroni correction, BH - Benjamini–Hochberg procedure.', type=str, default='Bonf', const='Bonf', choices=['Bonf', 'BH'])
     
     parser.add_argument('-diffacto_args', nargs='?', help='String of additional arguments to submit into Diffacto (in command line the string should be in double quotes: \'\" \"\', in cfg file in single quotes) except: -i, -out, -samples, -min_samples; default: "-normalize median -impute_threshold 0.25" ', type=str, default='-normalize median -impute_threshold 0.25', const='')
     parser.add_argument('-dino_args', nargs='?', help='String of additional arguments to submit into Dinosaur (in command line the string should be in double quotes: \'\" \"\', in cfg file in single quotes) except: --outDir --outName; default: ""', type=str, default='', const='')
@@ -624,7 +625,8 @@ def run():
             diffacto_out = paths['DiffOut'], 
             out_folder = out_directory, 
             plot_venn = plot_venn, 
-            pval_threshold = args['pval_threshold'], 
+            pval_threshold = args['pval_threshold'],
+            pval_adj=args['pval_adj'],
             fc_threshold = args['fc_threshold'], 
             dynamic_fc_threshold = args['dynamic_fc_threshold'], 
             save = save, 
@@ -688,6 +690,7 @@ def run():
                 out_folder = out_directory, 
                 plot_venn = plot_venn, 
                 pval_threshold = args['pval_threshold'], 
+                pval_adj=args['pval_adj'],
                 fc_threshold = args['fc_threshold'], 
                 dynamic_fc_threshold = args['dynamic_fc_threshold'], 
                 save = save, 
