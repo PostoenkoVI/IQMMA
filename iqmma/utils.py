@@ -166,10 +166,12 @@ def generate_users_output(diffacto_out={},
         if pval_adj == 'Bonf' :
             bonferroni = pval_threshold/len(table)
             table['pval_adj_pass'] = table['P(PECA)'] <= bonferroni
+            logger.info('Bonferroni p value correction is applied')
         elif pval_adj == 'BH' :
             l = len(table)
             table['BH'] = pd.Series([(i+1)*pval_threshold/l for i in range(l)], index=table.index)
             table['pval_adj_pass'] = table['P(PECA)'] <= table['BH']
+            logger.info('Benjamini–Hochberg p value correction procedure is applied')
         else :
             logger.critical('Wrong value for the `pval_adj` argument')
             return dict([(suf, 0) for suf in suffixes])
