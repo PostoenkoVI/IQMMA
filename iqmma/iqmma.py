@@ -169,7 +169,7 @@ def run():
             logger.warning('Invalid path for example cfg creation. Directory does not exist')
             return 1
     
-    if args['treads'] :
+    if args['threads'] :
         if args['bio2'] :
             if not 'nprocs' in args['bio2_args'] :
                 args['bio2_args'] = args['bio2_args'].rstrip(' ') + ' -nprocs ' + str(args['threads'])
