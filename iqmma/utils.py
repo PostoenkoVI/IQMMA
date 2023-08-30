@@ -389,8 +389,8 @@ def mix_intensity(input_dict,
             merge_df[ cv_col ] = merge_df[ std_col ] / merge_df[ mean_col ]
 
             not_na_col = sample_num+'_'+'not_NaN'+'_'+ short_suf
-            av = merge_df[ cv_col ].mean()
-            merge_df[ cv_col ].mask( merge_df[ not_na_col ] == 1 , other = av, inplace = True)
+            med = merge_df[ cv_col ].median()
+            merge_df[ cv_col ].mask( merge_df[ not_na_col ] == 1 , other = med, inplace = True)
             
             med_cv_to_corr[suf][sample_num] = merge_df[cv_col].median()
             
