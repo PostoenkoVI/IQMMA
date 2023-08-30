@@ -183,9 +183,9 @@ def generate_users_output(diffacto_out={},
             dynamic_fc_threshold = 0
         if not dynamic_fc_threshold :
             table = table[table['pval_adj_pass']][['Protein', 'P(PECA)', 'log2_FC']]
-            logger.info('Static fold change threshold is applied')
             border_fc = fc_threshold
-            table = table[abs(table['log2_FC']) > border_fc]
+            logger.info('Static fold change threshold is applied for {}: {} {}'.format(suf, -1*border_fc, border_fc))
+            table = table[abs(table['log2_FC']) >= border_fc]
         else:
             t = table[~table['pval_adj_pass']]['log2_FC'].to_numpy()
             t = t[~np.isnan(t)]
