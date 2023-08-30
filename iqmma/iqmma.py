@@ -93,7 +93,7 @@ def run():
     parser.add_argument('-outpept', nargs='?', help='name of output diffacto peptides file (important: .txt)', type=str, default='peptides.txt', const='peptides.txt')
     parser.add_argument('-outsampl', nargs='?', help='name of output diffacto samples file (important: .txt)', type=str, default='sample.txt', const='sample.txt')
     parser.add_argument('-outdiff', nargs='?', help='name of diffacto output file (important: .txt)', type=str, default='diffacto_out.txt', const='diffacto_out.txt')
-    parser.add_argument('-min_samples', nargs='?', help='minimum number of samples for peptide usage, -1 means that half of the given number of files would be used', type=int, default=-1, const=-1)
+    parser.add_argument('-min_samples', nargs='?', help='minimum number of samples for peptide usage, 0 means that the minimum of the number of files in s1 and s2 would be used, -1 means that half of the given number of files would be used', type=int, default=0, const=0)
     
     parser.add_argument('-mbr', nargs='?', help='match between runs (1 - on, 0 - off)', type=int, default=0, const=0, choices=[0, 1])
     parser.add_argument('-pval_threshold', nargs='?', help='P-value threshold for reliable differetially expressed proteins', type=float, default=0.05, const=0.05)
@@ -258,6 +258,8 @@ def run():
             
     if args['min_samples'] == -1 :
         args['min_samples'] = int(len(samples)/2)
+    if args['min_samples'] == 0 :
+        args['min_samples'] = min([len(samples_dict[x]) for x in sample_nums])
     
     logger.debug('samples_dict = ' + str(samples_dict))
 
