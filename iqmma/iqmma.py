@@ -205,6 +205,10 @@ def run():
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), args['dif'])
         else :
             args['dif'] = os.path.abspath(os.path.normpath(args['dif']))
+            
+        if set(args[sample_nums[0]]) & set(args[sample_nums[1]]) :
+            logger.critical('Identical files added for both samples (s1 and s2). Statistical test cannot be performed.')
+            raise ValueError(errno.ENOENT, os.strerror(errno.ENOENT), set(args[sample_nums[0]]) & set(args[sample_nums[1]]))
 
 #     if not args['scav2dif'] :
 #         logger.warning('path to scav2diffacto.py file is required')
