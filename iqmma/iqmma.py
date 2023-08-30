@@ -97,7 +97,7 @@ def run():
     
     parser.add_argument('-mbr', nargs='?', help='match between runs (1 - on, 0 - off)', type=int, default=0, const=0, choices=[0, 1])
     parser.add_argument('-pval_threshold', nargs='?', help='P-value threshold for reliable differetially expressed proteins', type=float, default=0.05, const=0.05)
-    parser.add_argument('-fc_threshold', nargs='?', help='Fold change threshold for reliable differetially expressed proteins', type=float, default=2., const=2.)
+    parser.add_argument('-fc_threshold', nargs='?', help='Fold change threshold for reliable differetially expressed proteins', type=float, default=1., const=1.)
     parser.add_argument('-dynamic_fc_threshold', nargs='?', help='whether to apply dynamically calculated threshold (1) or not and use static -fc_threshold (0) ', type=int, default=1, const=1, choices=[0, 1])
     parser.add_argument('-pval_adj', nargs='?', help='P value adjustment method for multiple comparisons: Bonf - Bonferroni correction, BH - Benjamini–Hochberg procedure.', type=str, default='Bonf', const='Bonf', choices=['Bonf', 'BH'])
     
