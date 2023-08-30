@@ -74,7 +74,7 @@ def run():
     parser.add_argument('-dino', nargs='?', help='path to Dinosaur', type=str, default='', const='')
 #    parser.add_argument('-bio', nargs='?', help='path to Biosaur', type=str, default='', const='')
     parser.add_argument('-bio2', nargs='?', help='path to Biosaur2', type=str, default='', const='')
-    parser.add_argument('-openMS', nargs='?', help='path to OpenMS feature', type=str, default='', const='')
+    parser.add_argument('-openMS', nargs='?', help='path to OpenMS FeatureFinderCentroided', type=str, default='', const='')
     
     parser.add_argument('-outdir', nargs='?', help='name of directory to store results', type=str, default='', const='')
     parser.add_argument('-feature_folder', nargs='?', help='directory to store features', type=str, default='', const='')
@@ -100,13 +100,14 @@ def run():
     parser.add_argument('-fc_threshold', nargs='?', help='Fold change threshold for reliable differetially expressed proteins', type=float, default=1., const=1.)
     parser.add_argument('-dynamic_fc_threshold', nargs='?', help='whether to apply dynamically calculated threshold (1) or not and use static -fc_threshold (0) ', type=int, default=1, const=1, choices=[0, 1])
     parser.add_argument('-pval_adj', nargs='?', help='P value adjustment method for multiple comparisons: Bonf - Bonferroni correction, BH - Benjamini–Hochberg procedure.', type=str, default='Bonf', const='Bonf', choices=['Bonf', 'BH'])
-    
+
     parser.add_argument('-diffacto_args', nargs='?', help='String of additional arguments to submit into Diffacto (in command line the string should be in double quotes: \'\" \"\', in cfg file in single quotes) except: -i, -out, -samples, -min_samples; default: "-normalize median -impute_threshold 0.99" ', type=str, default='-normalize median -impute_threshold 0.99', const='')
     parser.add_argument('-dino_args', nargs='?', help='String of additional arguments to submit into Dinosaur (in command line the string should be in double quotes: \'\" \"\', in cfg file in single quotes) except: --outDir --outName; default: ""', type=str, default='', const='')
 #    parser.add_argument('-bio_args', nargs='?', help='String of additional arguments to submit into Biosaur (hole string in single quotes in command line) except: -o; default: ""', type=str, default='', const='')
     parser.add_argument('-bio2_args', nargs='?', help='String of additional arguments to submit into Biosaur2 (in command line the string should be in double quotes: \'\" \"\', in cfg file in single quotes) except: -o; default: "-hvf 1000 -minlh 3"', type=str, default='-hvf 1000 -minlh 3', const='')
     parser.add_argument('-openms_args', nargs='?', help='String of additional arguments to submit into OpenMSFeatureFinder (in command line the string should be in double quotes: \'\" \"\', in cfg file in single quotes) except: -in, -out; default: "-algorithm:isotopic_pattern:charge_low 2 -algorithm:isotopic_pattern:charge_high 7"', type=str, default='-algorithm:isotopic_pattern:charge_low 2 -algorithm:isotopic_pattern:charge_high 7', const='')
-
+    parser.add_argument('-threads', nargs='?', help='Number of threads for multiprocessing for Biosaur2 and FeatureFinderCentroided feature detections, recommended value is a number of the processor cores. Not overwrites individual values stated via -programm_args options.', type=int, default=4, const=4)
+    
 #    parser.add_argument('-version', action='version', version='%s' % (pkg_resources.require("scavager")[0], ))
     console_config = vars(parser.parse_args())
     console_keys = [x[1:] for x in sys.argv if x.startswith('-')]
@@ -168,6 +169,19 @@ def run():
             logger.warning('Invalid path for example cfg creation. Directory does not exist')
             return 1
     
+    if args['treads'] :
+        if args['bio2'] :
+            if not 'nprocs' in args['bio2_args'] :
+                args['bio2_args'] = args['bio2_args'].rstrip(' ') + ' -nprocs ' + str(args['threads'])
+                logger.debug('-bio2_args extended with -nprocs {}'.format(args['threads']))
+            else :
+                logger.debug('-bio2_args already contains -nprocs option, iqmma -threads {} is ignored'.format(args['threads']))
+        if args['openMS'] :
+            if not 'threads' in args['openms_args'] :
+                args['openms_args'] = args['openms_args'].rstrip(' ') + ' -threads ' + str(args['threads'])
+                logger.debug('-openms_args extended with -threads {}'.format(args['threads']))
+            else :
+                logger.debug('-openms_args already contains -threads option, iqmma -threads {} is ignored'.format(args['threads']))
     logger.debug(args)
     
     if not args['s1'] :
