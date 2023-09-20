@@ -687,49 +687,56 @@ def opt_bin(ar, border=16, logger = logging.getLogger('function')) :
 
 
 def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = logging.getLogger('function')) :
-    
-    bwidth = opt_bin(true_md, logger=logger)
-    bbins = np.arange(mass_left, mass_right, bwidth)
-    H1, b1 = np.histogram(true_md, bins=bbins)
-    noise_fraction = max(1, np.median(H1)) * len(H1) / H1.sum()
+    if len(true_md) > 100 :
+        bwidth = opt_bin(true_md, logger=logger)
+        bbins = np.arange(mass_left, mass_right, bwidth)
+        H1, b1 = np.histogram(true_md, bins=bbins)
+        noise_fraction = max(1, np.median(H1)) * len(H1) / H1.sum()
 
-    H_marg = np.median(H1)
-    i = np.argmax(H1)
-    max_k = len(H1) - 1
-    j = i
-    k = i
-    while j >= 0 and H1[j] > H_marg:
-        j -= 1
-    while k <= max_k and H1[k] > H_marg:
-        k += 1            
-    w = (k-j)
-    t = []
-#        logger.debug('Интервал значений ' + str(b1[ll]-bwidth) + ' ' + str(b1[rr]))
-    for el in true_md :
-        if el >= b1[i]-bwidth*(i-j) and el <= b1[i]+bwidth*(k-i) :
-            t.append(el)
+        H_marg = np.median(H1)
+        i = np.argmax(H1)
+        max_k = len(H1) - 1
+        j = i
+        k = i
+        while j >= 0 and H1[j] > H_marg:
+            j -= 1
+        while k <= max_k and H1[k] > H_marg:
+            k += 1            
+        w = (k-j)
+        t = []
+    #        logger.debug('Интервал значений ' + str(b1[ll]-bwidth) + ' ' + str(b1[rr]))
+        for el in true_md :
+            if el >= b1[i]-bwidth*(i-j) and el <= b1[i]+bwidth*(k-i) :
+                t.append(el)
 
-    bwidth = opt_bin(t, border=min(8,8*0.5/noise_fraction), logger=logger)
-    bbins = np.arange(min(t), max(t) , bwidth)
-    H2, b2 = np.histogram(t, bins=bbins)
-    # pickle.dump(t, open('/home/leyla/project1/mbr/t.pickle', 'wb'))
-    m = max(H2)
-    mi = b2[np.argmax(H2)]
-    s = (max(t) - min(t))/6
-    noise = np.median(H2)
+        bwidth = opt_bin(t, border=min(8,8*0.5/noise_fraction), logger=logger)
+        bbins = np.arange(min(t), max(t) , bwidth)
+        H2, b2 = np.histogram(t, bins=bbins)
+        # pickle.dump(t, open('/home/leyla/project1/mbr/t.pickle', 'wb'))
+        m = max(H2)
+        mi = b2[np.argmax(H2)]
+        s = (max(t) - min(t))/6
+        noise = np.median(H2)
 
-    popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
-    # popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
-    logger.debug(popt)
-    mass_shift, mass_sigma = popt[1], abs(popt[2])
+        popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
+        # popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
+        logger.debug(popt)
+        mass_shift, mass_sigma = popt[1], abs(popt[2])
 
-    if check_gauss:
-        logger.debug('GAUSS FIT, %f, %f' % (percentileofscore(t, mass_shift - 3 * mass_sigma), percentileofscore(t, mass_shift + 3 * mass_sigma)))
+        if check_gauss:
+            logger.debug('GAUSS FIT, %f, %f' % (percentileofscore(t, mass_shift - 3 * mass_sigma), percentileofscore(t, mass_shift + 3 * mass_sigma)))
 
-        if percentileofscore(t, mass_shift - 3 * mass_sigma) + 100 - percentileofscore(t, mass_shift + 3 * mass_sigma) > 10:
-            mass_sigma = scoreatpercentile(np.abs(t-mass_shift), 95) / 2
-            
-    logger.debug('shift: ' + str(mass_shift) + '\t' + 'sigma: ' + str(mass_sigma))
+            if percentileofscore(t, mass_shift - 3 * mass_sigma) + 100 - percentileofscore(t, mass_shift + 3 * mass_sigma) > 10:
+                mass_sigma = scoreatpercentile(np.abs(t-mass_shift), 95) / 2
+
+        logger.debug('shift: ' + str(mass_shift) + '\t' + 'sigma: ' + str(mass_sigma))
+    else :
+        logger.warning('Too few values to calculate optimal shift and sigma: {}'.format(len(true_md)))
+        mass_shift, mass_sigma = np.mean(true_md), np.std(true_md)
+        if mass_sigma == 0 :
+            logger.warning('Can not calculate sigma, input is a list of identical values. Using shift/3 instead. Matching results are unreliable!')
+            mass_sigma = np.abs(mass_shift)/3
+        pcov = [(1, 1), (1, 1)]
     return mass_shift, mass_sigma, pcov[0][0]
 
 
