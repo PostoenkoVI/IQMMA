@@ -736,6 +736,7 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = l
         if mass_sigma == 0 :
             logger.warning('Can not calculate sigma, input is a list of identical values. Using shift/3 instead. Matching results are unreliable!')
             mass_sigma = np.abs(mass_shift)/3
+        logger.debug('shift: ' + str(mass_shift) + '\t' + 'sigma: ' + str(mass_sigma))
         pcov = [(1, 1), (1, 1)]
     return mass_shift, mass_sigma, pcov[0][0]
 
