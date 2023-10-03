@@ -575,6 +575,8 @@ def read_PSMs(infile_path, usecols=None, logger=logging.getLogger('function')) :
     if 'MS-GF:EValue' in df1.columns:
         # MSGF search engine
         ftype = 'msgf'
+        df1['Modification'] = df1['Modification'].apply(str)
+        df1['PeptideSequence'] = df1['PeptideSequence'] + '_' + df1['Modification']
         df1.rename(columns={'PeptideSequence':'peptide', 
                             'chargeState':'assumed_charge',
                             'spectrumID':'spectrum',
@@ -584,7 +586,10 @@ def read_PSMs(infile_path, usecols=None, logger=logging.getLogger('function')) :
                            }, 
                    inplace=True)
         df1['precursor_neutral_mass'] = df1['calculatedMassToCharge'] * df1['assumed_charge'] - df1['assumed_charge'] * 1.00727649
-
+    
+    if ('peptide' in df1.columns) and ('modified_peptide' in df1.columns) :
+        df1.drop(columns='peptide', inplace=True)
+        df1.rename(columns={'modified_peptide':'peptide'}, inplace=True)
     if 'protein_descr' in df1.columns:
 
         if set(df1['protein_descr'].str[0]) == {None}:
