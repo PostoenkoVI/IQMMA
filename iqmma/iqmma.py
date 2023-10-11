@@ -68,8 +68,8 @@ def run():
 #    parser.add_argument('-sampleNames', nargs='+', help='short names for samples for inner structure of results')
     parser.add_argument('-psm_folder', nargs='?', help='path to the folder with PSMs files', type=str, default='', const='')
     parser.add_argument('-psm_format', nargs='?', help='format or suffix to search PSMs files (may be PSMs_full.tsv or identipy.pep.xml for example)', type=str, default='PSMs_full.tsv', const='PSMs_full.tsv')
-    parser.add_argument('-pept_folder', nargs='?', help='path to folder with files (filename starts with the name of .mzML and ends with peptides.tsv) with peptides filtered on certain FDR (default: searching for them near PSMs)', type=str, default='', const='')
-    parser.add_argument('-prot_folder', nargs='?', help='path to folder with files (filename starts with the name of .mzML and ends with proteins.tsv) with proteins filtered on certain FDR (default: searching for them near PSMs)', type=str, default='', const='')
+    parser.add_argument('-allowed_pepts', nargs='?', help='path to file with sequences of peptides (with "peptide" header) to use in quantitation', type=str, default='', const='')
+    parser.add_argument('-allowed_prots', nargs='?', help='path to file with names of proteins (according fasta, with "dbname" header) to use in quantitation', type=str, default='', const='')
     
     parser.add_argument('-dino', nargs='?', help='path to Dinosaur', type=str, default='', const='')
 #    parser.add_argument('-bio', nargs='?', help='path to Biosaur', type=str, default='', const='')
@@ -299,62 +299,32 @@ def run():
         mzML_dict[sample] = mzML
     
     if mode != 'feature matching' : 
-        peptides_dict = {}
-        peptides_suf = 'peptides.tsv'
-        if args['pept_folder'] :
-            if args['pept_folder'] != args['psm_folder'] :
-                if os.path.exists(os.path.normpath(args['pept_folder'])) :
-                    dir_name = os.path.abspath(os.path.normpath(args['pept_folder']))
-                else :
-                    logger.critical('path to peptides files folder does not exist: {}'.format(os.path.normpath(args['pept_folder'])))
-                    return -1
+        if args['allowed_pepts'] :
+            if os.path.exists(os.path.normpath(args['allowed_pepts'])) :
+                logger.info('Peptides from file {} are allowed for quantitative analysis'.format(os.path.normpath(args['allowed_pepts'])))
+                peptides_path = os.path.normpath(args['allowed_pepts'])
             else :
-                logger.warning('trying to find *%s files in the same directory as PSMs', peptides_suf)
-                dir_name = os.path.dirname(PSMs_full_paths[0])
-                logger.debug(dir_name)
-            for sample in samples :
-                i = 0
-                for filename in os.listdir(dir_name) :
-                    if filename.startswith(sample) and filename.endswith(peptides_suf) :
-                        peptides_dict[sample] = os.path.join(dir_name, filename)
-                        logger.info('Peptides from file {} are allowed for quantitative analysis'.format(peptides_dict[sample]))
-                        logger.debug(os.path.join(dir_name, filename))
-                        i += 1
-                if i == 0 :
-                    logger.debug('sample '+ sample + ' peptides file not found in ' + dir_name)
+                logger.warning('Path to peptides files folder does not exist: {}'.format(os.path.normpath(args['allowed_pepts'])))
+                peptides_path = ''
         else :
-            logger.info('All peptides are allowed for quantitative analysis')
+            peptides_path = ''
 
-        proteins_dict = {}
-        proteins_suf = 'proteins.tsv'
-        if args['prot_folder'] :
-            if args['prot_folder'] != args['psm_folder'] :
-                if os.path.exists(os.path.normpath(args['prot_folder'])) :
-                    dir_name = os.path.abspath(os.path.normpath(args['prot_folder']))
-                else :
-                    logger.critical('path to proteins files folder does not exist: {}'.format(os.path.normpath(args['prot_folder'])))
-                    return -1
+        if args['allowed_prots'] :
+            if os.path.exists(os.path.normpath(args['allowed_prots'])) :
+                logger.info('Proteins from file {} are allowed for quantitative analysis'.format(os.path.normpath(args['allowed_prots'])))
+                proteins_path = os.path.normpath(args['allowed_prots'])
             else :
-                logger.warning('Searching *{} files in the same directory as PSMs'.format(proteins_suf))
-                dir_name = os.path.dirname(PSMs_full_paths[0])
-            for sample in samples :
-                i = 0
-                for filename in os.listdir(dir_name) :
-                    if filename.startswith(sample) and filename.endswith(proteins_suf) :
-                        proteins_dict[sample] = os.path.join(dir_name, filename)
-                        logger.info('Proteins from file {} are allowed for quantitative analysis'.format(proteins_dict[sample]))
-                        i += 1
-                if i == 0 :
-                    logger.debug('sample '+ sample + ' proteins file not found')
-        else :
-            logger.info('All proteins are allowed for quantitative analysis')
+                logger.warning('path to proteins files folder does not exist: {}'.format(os.path.normpath(args['allowed_prots'])))
+                proteins_path = ''
+        else : 
+            proteins_path = ''
     
     paths = {'mzML': mzML_dict, 
              'PSM_full' : PSMs_full_dict,
             }
     if mode != 'feature matching' :
-        paths['peptides'] = peptides_dict
-        paths['proteins'] = proteins_dict
+        paths['peptides'] = peptides_path
+        paths['proteins'] = proteins_path
 #    print(paths)
     out_directory = args['outdir']
     sample_1 = args['s1']
@@ -573,19 +543,17 @@ def run():
         
         allowed_prots = set()
         if paths['proteins'] :    
-            for key in paths['proteins'].keys() :
-                df0 = pd.read_table(paths['proteins'][key], usecols=['dbname'])
-                allowed_prots.update(df0['dbname'])
+            df0 = pd.read_table(paths['proteins'], usecols=['dbname'])
+            allowed_prots.update(df0['dbname'])
             logger.info('allowed proteins total: %d', len(allowed_prots))
         else :
             logger.info('allowed proteins total: all')
         
         allowed_peptides = set()
         if paths['peptides'] :
-            for key in paths['peptides'].keys() :
-                logger.info('Allowed peptides for quantitation from file: {}'.format(paths['peptides'][key]))
-                df0 = pd.read_table(paths['peptides'][key], usecols=['peptide'])
-                allowed_peptides.update(df0['peptide'])
+            logger.info('Allowed peptides for quantitation from file: {}'.format(paths['peptides'][key]))
+            df0 = pd.read_table(paths['peptides'], usecols=['peptide'])
+            allowed_peptides.update(df0['peptide'])
             allowed_pept_modif = False
             logger.info('allowed peptides total: %d', len(allowed_peptides))
         else :
