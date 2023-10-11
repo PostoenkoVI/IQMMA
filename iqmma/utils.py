@@ -590,6 +590,7 @@ def read_PSMs(infile_path, usecols=None, logger=logging.getLogger('function')) :
     if ('peptide' in df1.columns) and ('modified_peptide' in df1.columns) :
         df1.drop(columns='peptide', inplace=True)
         df1.rename(columns={'modified_peptide':'peptide'}, inplace=True)
+    df1['peptide'].str.replace(',', ';')
     if 'protein_descr' in df1.columns:
 
         if set(df1['protein_descr'].str[0]) == {None}:
@@ -996,6 +997,7 @@ def mbr(feat,II,PSMs_full_paths, PSM_path, logger=logging.getLogger('function'))
     found_set = set(match_between_runs_copy01['pep_charge'])
     for j in PSMs_full_paths:
         if PSM_path != j:
+            logger.debug('Matching PSMs from {}'.format(PSM_path))
             psm_j_fdr = read_PSMs(j)
             psm_j_fdr['pep_charge'] = psm_j_fdr['peptide'] + psm_j_fdr['assumed_charge'].map(str)
             psm_j_fdr = psm_j_fdr[psm_j_fdr['pep_charge'].apply(lambda x: x not in found_set)]
