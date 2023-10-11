@@ -332,7 +332,7 @@ def run():
                 if os.path.exists(os.path.normpath(args['prot_folder'])) :
                     dir_name = os.path.abspath(os.path.normpath(args['prot_folder']))
                 else :
-                    logger.critical('path to proteins files folder does not exist: {}'.format(os.path.normpath(args['pept_folder'])))
+                    logger.critical('path to proteins files folder does not exist: {}'.format(os.path.normpath(args['prot_folder'])))
                     return -1
             else :
                 logger.warning('Searching *{} files in the same directory as PSMs'.format(proteins_suf))
@@ -576,18 +576,36 @@ def run():
             for key in paths['proteins'].keys() :
                 df0 = pd.read_table(paths['proteins'][key], usecols=['dbname'])
                 allowed_prots.update(df0['dbname'])
-            logger.debug('allowed proteins total: %d', len(allowed_prots))
+            logger.info('allowed proteins total: %d', len(allowed_prots))
         else :
-            logger.debug('allowed proteins total: all')
+            logger.info('allowed proteins total: all')
         
         allowed_peptides = set()
         if paths['peptides'] :
             for key in paths['peptides'].keys() :
+                logger.info('Allowed peptides for quantitation from file: {}'.format(paths['peptides'][key]))
                 df0 = pd.read_table(paths['peptides'][key], usecols=['peptide'])
                 allowed_peptides.update(df0['peptide'])
-            logger.debug('allowed peptides total: %d', len(allowed_peptides))
+            allowed_pept_modif = False
+            logger.info('allowed peptides total: %d', len(allowed_peptides))
         else :
-            logger.debug('allowed peptides total: all')
+            q_counter = 0
+            temp_s = set()
+            for psm_path in paths['PSMs_full'].values() :
+                t = read_PSMs(path)
+                if 'q' in list(t.columns) :
+                    logger.info('Using q-value < 0.01 filtering on input peptides for file: {}'.format(path))
+                    temp_s.update(t[t['q'] < 0.01]['peptide'])
+                    q_counter += 1
+                else :
+                    temp_s.update(t['peptide'])
+            if q_counter > 0 :
+                logger.info('Using Scaveger input files, peptide modifications allowed')
+                allowed_pept_modif = True
+            else :
+                logger.info('No filtering on the input peptides applied, all accepted for quantitation')
+                allowed_pept_modif = False
+            logger.info('Allowed peptides total: %d', len(allowed_peptides))
 
         paths['DiffPept'] = {}
         paths['DiffSampl'] = {}
@@ -608,6 +626,7 @@ def run():
                                                                         method=args['pept_intens'], 
                                                                         intens_colomn_name=intens_colomn_name, 
                                                                         allowed_peptides=allowed_peptides, # set()
+                                                                        allowed_pept_modif=allowed_pept_modif,
                                                                         allowed_prots=allowed_prots, # set()
                                                                         out_path=out_path,
                                                                         logger=logger

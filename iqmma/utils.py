@@ -8,6 +8,7 @@ import sys
 import matplotlib
 import matplotlib.pyplot as plt
 from collections import defaultdict, Counter
+from re import sub
 import pyteomics
 from matplotlib.ticker import PercentFormatter
 from pyteomics import pepxml, mzid
@@ -498,21 +499,26 @@ def charge_states_intensity_processing(path,
                                        method='z-attached', 
                                        intens_colomn_name='feature_intensityApex',
                                        allowed_peptides=None, # set()
+                                       allowed_pept_modif=True,
                                        allowed_prots=None, # set()
                                        out_path=None, 
                                        logger = logging.getLogger('function')
                                       ) :
-    psm_df = pd.read_table(path, sep='\t')
+    psm_df = read_PSMs(path)
     
     cols = list(psm_df.columns)
     needed_cols = ['peptide', 'protein', 'assumed_charge', intens_colomn_name]
     for col in needed_cols :
         if col not in cols :
-            logger.critical('Not all needed columns are in file: '+col+' not exists')
-            raise ValueError('Not all needed columns are in file: '+col+' not exists')
+            logger.critical('Not all expected columns are in file: '+col+' not exists')
+            raise ValueError('Not all expected columns are in file: '+col+' not exists')
     
-    if allowed_peptides :
+    if allowed_peptides and allowed_pept_modif :
         psm_df = psm_df[psm_df['peptide'].apply(lambda z: z in allowed_peptides)]
+    elif allowed_peptides and not allowed_pept_modif :
+        psm_df['peptide_unmod'] = psm_df['peptide'].apply(lambda x : sub('[^A-Z]', '', x))
+        psm_df = psm_df[psm_df['peptide_unmod'].apply(lambda z: z in allowed_peptides)]
+        psm_df.drop(columns='peptide_unmod', inplace=True)
     if allowed_prots :
         psm_df['protein'] = psm_df['protein'].apply(lambda z: ';'.join([u for u in ast.literal_eval(z) if u in allowed_prots]))
         psm_df = psm_df[psm_df['protein'].apply(lambda z: z != '')]
@@ -575,8 +581,9 @@ def read_PSMs(infile_path, usecols=None, logger=logging.getLogger('function')) :
     if 'MS-GF:EValue' in df1.columns:
         # MSGF search engine
         ftype = 'msgf'
-        df1['Modification'] = df1['Modification'].apply(str)
-        df1['PeptideSequence'] = df1['PeptideSequence'] + '_' + df1['Modification']
+        msgf_df['Modification'] = msgf_df['Modification'].apply(lambda x : '_' + '_'.join(['_'.join([str(k).lower()+'_'+str(v).lower() for k, v in d.items()]) for d in x]))
+        msgf_df['Modification'].str.replace(' ', '_')
+        df1['PeptideSequence'] = df1['PeptideSequence'] + df1['Modification']
         df1.rename(columns={'PeptideSequence':'peptide', 
                             'chargeState':'assumed_charge',
                             'spectrumID':'spectrum',
