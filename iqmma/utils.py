@@ -674,7 +674,7 @@ def opt_bin(ar, border=16, logger = logging.getLogger('function')) :
         bbins = np.arange(min(ar), max(ar), bwidth)
         H1, b1 = np.histogram(ar, bins=bbins)
         max_percent = 100*max(H1)/sum(H1)
-        if max_percent < border :
+        if max_percent <= border :
             bestbins1 = num_bins
             mxp1 = max_percent
         i += 1
@@ -689,7 +689,7 @@ def opt_bin(ar, border=16, logger = logging.getLogger('function')) :
         bbins = np.arange(min(ar), max(ar), bwidth)
         H1, b1 = np.histogram(ar, bins=bbins)
         max_percent = 100*max(H1)/sum(H1)
-        if max_percent < border :
+        if max_percent <= border :
             bestbins2 = num_bins
             mxp2 = max_percent
         i += 1
