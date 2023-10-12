@@ -1012,7 +1012,7 @@ def mbr(feat,II,PSMs_full_paths, PSM_path, logger=logging.getLogger('function'))
     found_set = set(match_between_runs_copy01['pep_charge'])
     for j in PSMs_full_paths:
         if PSM_path != j:
-            logger.debug('Matching PSMs from {}'.format(PSM_path))
+            logger.debug('Matching PSMs from {}'.format(j))
             psm_j_fdr = read_PSMs(j)
             psm_j_fdr['pep_charge'] = psm_j_fdr['peptide'] + psm_j_fdr['assumed_charge'].map(str)
             psm_j_fdr = psm_j_fdr[psm_j_fdr['pep_charge'].apply(lambda x: x not in found_set)]
