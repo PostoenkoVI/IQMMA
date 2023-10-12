@@ -19,6 +19,14 @@ from scipy.optimize import curve_fit
 import logging
 
 
+class WrongInputError(NotImplementedError):
+    pass
+
+
+class EmptyFileError(ValueError):
+    pass
+
+
 def read_cfg(file, category) :
     with open(file, 'r') as ff :
         f = ff.read()
@@ -504,7 +512,7 @@ def charge_states_intensity_processing(path,
                                        out_path=None, 
                                        logger = logging.getLogger('function')
                                       ) :
-    psm_df = read_PSMs(path)
+    psm_df = pd.read_table(path, sep='\t')
     
     cols = list(psm_df.columns)
     needed_cols = ['peptide', 'protein', 'assumed_charge', intens_colomn_name]

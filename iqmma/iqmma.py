@@ -106,6 +106,7 @@ def run():
 #    parser.add_argument('-bio_args', nargs='?', help='String of additional arguments to submit into Biosaur (hole string in single quotes in command line) except: -o; default: ""', type=str, default='', const='')
     parser.add_argument('-bio2_args', nargs='?', help='String of additional arguments to submit into Biosaur2 (in command line the string should be in double quotes: \'\" \"\', in cfg file in single quotes) except: -o; default: "-hvf 1000 -minlh 3"', type=str, default='-hvf 1000 -minlh 3', const='')
     parser.add_argument('-openms_args', nargs='?', help='String of additional arguments to submit into OpenMSFeatureFinder (in command line the string should be in double quotes: \'\" \"\', in cfg file in single quotes) except: -in, -out; default: "-algorithm:isotopic_pattern:charge_low 2 -algorithm:isotopic_pattern:charge_high 7"', type=str, default='-algorithm:isotopic_pattern:charge_low 2 -algorithm:isotopic_pattern:charge_high 7', const='')
+    parser.add_argument('-decoy_prefix', nargs='?', help='String added to the protein name to showcase that it is a decoy (default: DECOY)', type=str, default='DECOY', const='DECOY')
     parser.add_argument('-threads', nargs='?', help='Number of threads for multiprocessing for Biosaur2 and FeatureFinderCentroided feature detections, recommended value is a number of the processor cores. Not overwrites individual values stated via -programm_args options.', type=int, default=4, const=4)
     
 #    parser.add_argument('-version', action='version', version='%s' % (pkg_resources.require("scavager")[0], ))
@@ -559,14 +560,16 @@ def run():
         else :
             q_counter = 0
             temp_s = set()
-            for psm_path in paths['PSMs_full'].values() :
-                t = read_PSMs(path)
+            for psm_path in PSMs_full_paths :
+                logger.debug('Reading PSM file {}'.format(psm_path))
+                t = read_PSMs(psm_path)
                 if 'q' in list(t.columns) :
-                    logger.info('Using q-value < 0.01 filtering on input peptides for file: {}'.format(path))
-                    temp_s.update(t[t['q'] < 0.01]['peptide'])
+                    logger.info('Using q-value < 0.01 filtering on input peptides for file: {}'.format(psm_path))
+                    temp_s.update(t[(t['q'] < 0.01) & (t['protein'].str.find(args['decoy_prefix']) < 0)]['peptide'])
                     q_counter += 1
                 else :
                     temp_s.update(t['peptide'])
+            allowed_peptides.update(temp_s)
             if q_counter > 0 :
                 logger.info('Using Scaveger input files, peptide modifications allowed')
                 allowed_pept_modif = True
