@@ -926,22 +926,50 @@ def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_r
     for j, i in enumerate(isotopes_array):
         idx[i] = j
         
+    rtStart_array_ms1 = df_features['rtStart'].values
+    rtEnd_array_ms1 = df_features['rtEnd'].values
+    if 'im' in df_features.columns:
+            im_array_ms1 = df_features['im'].values
+        
     if len(psms) >= 500 :
         if mean_rt1 is False and sigma_rt1 is False:
             logger.debug('rt1')
-            mean_rt1, sigma_rt1 = found_mean_sigma(df_features,psms, 'rt1', logger=logger)
+            try :
+                mean_rt1, sigma_rt1 = found_mean_sigma(df_features,psms, 'rt1', logger=logger)
+            except RuntimeError :
+                logger.warning('rt1: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev = 1000.')
+                mean_rt1, sigma_rt1 = 0, max(rtStart_array_ms1)/25
 
         if mean_rt2 is False and sigma_rt2 is False:
             logger.debug('rt2')
-            mean_rt2, sigma_rt2 = found_mean_sigma(df_features,psms, 'rt2', logger=logger)
+            try :
+                mean_rt2, sigma_rt2 = found_mean_sigma(df_features,psms, 'rt2', logger=logger)
+            except RuntimeError :
+                logger.warning('rt2: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev = 1000.')
+                mean_rt2, sigma_rt2 = 0, max(rtEnd_array_ms1)/25
 
         if mean_mz is False and sigma_mz is False:
             logger.debug('mz')
-            mean_mz, sigma_mz = found_mean_sigma(df_features,psms,'mz_diff_ppm', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2, logger=logger)   
+            try :
+                mean_mz, sigma_mz = found_mean_sigma(df_features,psms,'mz_diff_ppm', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2, logger=logger)
+            except RuntimeError :
+                logger.warning('mz: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev = 1000.')
+                mean_mz, sigma_mz = 0, 100/3
 
         if mean_im is False and sigma_im is False:
             logger.debug('im')
-            mean_im, sigma_im = found_mean_sigma(df_features,psms,'im_diff', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2, mean_mz = mean_mz, sigma_mz= sigma_mz, logger=logger)
+            try :
+                mean_im, sigma_im = found_mean_sigma(df_features,psms,'im_diff', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2, mean_mz = mean_mz, sigma_mz= sigma_mz, logger=logger)
+            except RuntimeError :
+                logger.warning('im: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev = 1000.')
+                if len(set(im_array_ms1)) != 1:
+                    max_im = max(im_array_ms1)
+                    min_im = min(im_array_ms1)
+                    mean_im = 0
+                    sigma_im = (max_im - min_im)/2
+                else :
+                    mean_im = 0
+                    sigma_im = False
 
     else :
         logger.warning('Too few psms to calculate optimal shift and sigma for optimal search: {}'.format(len(psms)))
