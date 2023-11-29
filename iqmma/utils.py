@@ -158,7 +158,7 @@ def generate_users_output(diffacto_out={},
     i = 0
     for suf in suffixes :
         try :
-            table = pd.read_csv(diffacto_out[suf], sep = '\t')
+            table = pd.read_csv(diffacto_out[suf], sep='\t')
         except :
             i += 1
             logger.critical('Something goes wrong with diffacto output file {}'.format(diffacto_out[suf]))
@@ -866,6 +866,7 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
                                          'i':i,
                                          'rt1':rt_diff1,
                                          'rt2':rt_diff2,
+                                         'psm_rt_exp':psm_rt, 
                                          'intensity':intensity}
                             if check_im:
                                 im_ms1 = im_array_ms1[idx_current_ime]
@@ -881,8 +882,21 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
     return results
 
 
-def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,sigma1=False,mean2=0,sigma2=False, mean_mz = 0, sigma_mz = False, logger = logging.getLogger('function')):
+def found_mean_sigma(df_features, 
+                     psms, 
+                     parameters, 
+                     sort ='mz_diff_ppm', 
+                     mean1=0, 
+                     sigma1=False, 
+                     mean2=0, 
+                     sigma2=False, 
+                     mean_mz = 0, 
+                     sigma_mz = False, 
+                     mbr_flag = False,
+                     logger = logging.getLogger('function')
+                    ):
 # sort ='mz_diff_ppm'
+    
     check_gauss = False
     rtStart_array_ms1 = df_features['rtStart'].values
     rtEnd_array_ms1 = df_features['rtEnd'].values
@@ -905,6 +919,29 @@ def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,
                 return 0,0
         else:
             return 0,0
+        
+    # разбить psms на бины по 'RT exp', сохранить их границы
+    # для каждого бина по 'RT exp' в results_psms посчитать медианное значение rt1, вычесть его из всех значений rt1 в бине
+    if mbr_flag :
+        numbins = 10
+        RT_exp_bins_left_borders = pd.qcut(psms['RT exp'].to_numpy(), numbins, labels=np.arange(numbins), retbins=True)[1]
+        calc_medians_rt_list = [[] for _ in range(numbins)]
+        for k, v in results_psms.items() :
+            for el in v :
+                i = numbins-1
+                while el['psm_rt_exp'] < RT_exp_bins_left_borders[i] and i > 0 :
+                    i -= 1
+                el['bin'] = i
+                calc_medians_rt_list[i].append(el['rt1'])
+        
+        median_rt1 = {}
+        for i in range(numbins) :
+            median_rt1[i] = np.median(calc_medians_rt_list[i])
+        calc_medians_rt_list = 0
+        
+        for k, v in results_psms.items() :
+            for el in v :
+                el['rt1'] = el['rt1'] - median_rt1[el['bin']]
     
     ar = []
     for value in results_psms.values():
@@ -917,10 +954,27 @@ def found_mean_sigma(df_features,psms,parameters, sort ='mz_diff_ppm' , mean1=0,
             ar.append(sorted(value, key=lambda x: abs(x[sort]))[0][parameters])
 
     mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss, logger=logger)
-    return mean, sigma
+    
+    if mbr_flag :
+        return mean, sigma, RT_exp_bins_left_borders, median_rt1, numbins
+    else :
+        return mean, sigma
 
 
-def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_rt1=False,mean_rt2=False,sigma_rt2=False,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2], logger = logging.getLogger('function')):
+def optimized_search_with_isotope_error_(df_features,
+                                         psms, 
+                                         mean_rt1=False, 
+                                         sigma_rt1=False, 
+                                         mean_rt2=False, 
+                                         sigma_rt2=False, 
+                                         mean_mz = False, 
+                                         sigma_mz = False, 
+                                         mean_im = False, 
+                                         sigma_im = False, 
+                                         isotopes_array=[0,1,-1,2,-2], 
+                                         mbr_flag = False,
+                                         logger = logging.getLogger('function')
+                                        ):
     
     idx = {}
     for j, i in enumerate(isotopes_array):
@@ -935,7 +989,12 @@ def optimized_search_with_isotope_error_(df_features,psms,mean_rt1=False,sigma_r
         if mean_rt1 is False and sigma_rt1 is False:
             logger.debug('rt1')
             try :
-                mean_rt1, sigma_rt1 = found_mean_sigma(df_features,psms, 'rt1', logger=logger)
+                if mbr_flag :
+                    mean_rt1, sigma_rt1, RT_exp_bins_left_borders, median_rt1, numbins = found_mean_sigma(df_features,psms, 'rt1', mbr_flag=mbr_flag, logger=logger)
+                    psms['bin'] = pd.qcut(psms['RT exp'], numbins, labels=np.arange(numbins) )
+                    psms['RT exp'] = psms[['RT exp', 'bin']].apply(lambda x : x['RT exp'] - median_rt1[x['bin']], axis=1)
+                else :
+                    mean_rt1, sigma_rt1 = found_mean_sigma(df_features,psms, 'rt1', logger=logger)
             except RuntimeError :
                 logger.warning('rt1: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev = 1000.')
                 mean_rt1, sigma_rt1 = 0, max(rtStart_array_ms1)/25
