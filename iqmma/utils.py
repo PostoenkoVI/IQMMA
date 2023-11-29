@@ -1104,7 +1104,7 @@ def mbr(feat,II,PSMs_full_paths, PSM_path, logger=logging.getLogger('function'))
             psm_j_fdr['pep_charge'] = psm_j_fdr['peptide'] + psm_j_fdr['assumed_charge'].map(str)
             psm_j_fdr = psm_j_fdr[psm_j_fdr['pep_charge'].apply(lambda x: x not in found_set)]
             logger.debug('Real PSMs count in the input to matching {}'.format(len(psm_j_fdr)))
-            III = optimized_search_with_isotope_error_(feat, psm_j_fdr, isotopes_array=[0,1,-1,2,-2], logger=logger)[0]
+            III = optimized_search_with_isotope_error_(feat, psm_j_fdr, isotopes_array=[0,1,-1,2,-2], mbr_flag=True, logger=logger)[0]
             III = III.sort_values(by = 'feature_intensityApex', ascending = False)
             III = III.drop_duplicates(subset = 'pep_charge')
             II = pd.concat([II, III])
