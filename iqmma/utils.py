@@ -16,6 +16,7 @@ import venn
 from venn import venn
 from scipy.stats import pearsonr, scoreatpercentile, percentileofscore
 from scipy.optimize import curve_fit
+from scipy.signal import find_peaks
 import logging
 
 
@@ -707,7 +708,7 @@ def opt_bin(ar, border=16, logger = logging.getLogger('function')) :
 
 
 
-def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = logging.getLogger('function')) :
+def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = logging.getLogger('function'),) : # flag=False) :
 
     bwidth = opt_bin(true_md, logger=logger)
     bbins = np.arange(mass_left, mass_right, bwidth)
@@ -725,24 +726,45 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = l
         k += 1            
     w = (k-j)
     t = []
-#        logger.debug('Интервал значений ' + str(b1[ll]-bwidth) + ' ' + str(b1[rr]))
+
     for el in true_md :
         if el >= b1[i]-bwidth*(i-j) and el <= b1[i]+bwidth*(k-i) :
             t.append(el)
-
+    
     bwidth = opt_bin(t, border=min(8,8*0.5/noise_fraction), logger=logger)
     bbins = np.arange(min(t), max(t) , bwidth)
     H2, b2 = np.histogram(t, bins=bbins)
-    # pickle.dump(t, open('/home/leyla/project1/mbr/t.pickle', 'wb'))
-    m = max(H2)
-    mi = b2[np.argmax(H2)]
-    s = (max(t) - min(t))/6
     noise = np.median(H2)
-
-    popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
-    # popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=[m, mi, s, noise])
+    peaks, prop = find_peaks(H2, height=noise)
+    
+    if len(peaks) >= 2 :
+        m_1 = np.max(prop['peak_heights'])
+        peaks_without_max = [h for h in prop['peak_heights'] if h != m_1]
+        m_1 = np.max(prop['peak_heights'])
+        m_2 = np.max(peaks_without_max)
+        m1_ind_in_H2 = peaks[ np.where(prop['peak_heights'] == m_1)[0][0]]
+        m2_ind_in_H2 = peaks[ np.where(prop['peak_heights'] == m_2)[0][0]]
+        mi_1 = b2[1 + m1_ind_in_H2]
+        mi_2 = b2[1 + m2_ind_in_H2]
+        s_1 = np.abs(mi_1 - mi_2)/6
+        s_2 = s_1
+    else :
+        m_1 = np.max(H2)
+        m_2 = m_1
+        mi_1 = b2[1 + np.argmax(H2)]
+        mi_2 = mi_1
+        s_1 = (np.max(b2)-np.min(b2))/6
+        s_2 = s_1
+    p0=[m_1, mi_1, s_1, m_2, mi_2, s_2, noise]
+    popt, pcov = curve_fit(noisydoublegaus, b2[1:], H2, p0=p0)
     logger.debug(popt)
-    mass_shift, mass_sigma = popt[1], abs(popt[2])
+    
+    peak_1, peak_2 = popt[:3], popt[3:6]
+    if peak_1[2] >= peak_2[2] :
+        peak = peak_1
+    else :
+        peak = peak_2
+    mass_shift, mass_sigma = peak[1], min(abs(peak[2]), (np.max(b2)-np.min(b2))/6)
 
     if check_gauss:
         logger.debug('GAUSS FIT, %f, %f' % (percentileofscore(t, mass_shift - 3 * mass_sigma), percentileofscore(t, mass_shift + 3 * mass_sigma)))
@@ -751,8 +773,7 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = l
             mass_sigma = scoreatpercentile(np.abs(t-mass_shift), 95) / 2
 
     logger.debug('shift: ' + str(mass_shift) + '\t' + 'sigma: ' + str(mass_sigma))
-
-        
+    
     return mass_shift, mass_sigma, pcov[0][0]
 
 
