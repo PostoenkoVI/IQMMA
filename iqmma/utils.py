@@ -764,7 +764,7 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = l
     for el in true_md :
         if el >= b1[i]-bwidth*(i-j) and el <= b1[i]+bwidth*(k-i) :
             t.append(el)
-    logger.debug(len(t), ' / ', len(true_md))
+    logger.debug('Values after noise filtering {} / {}'.format( len(t), len(true_md)))
     bwidth = opt_bin(t, border=min(8,8*0.5/noise_fraction), logger=logger)
     bbins = np.arange(min(t), max(t) , bwidth)
     H2, b2 = np.histogram(t, bins=bbins)
