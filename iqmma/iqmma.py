@@ -427,8 +427,9 @@ def run():
             out_path = os.path.join(feature_path, 'openMS')
             os.makedirs(out_path, exist_ok=True)
             for path, sample in zip(mzML_paths, samples) :
+                o = os.path.join(feature_path, sample + '_features_' + 'openMS.tsv')
                 out_path = os.path.join(feature_path, 'openMS', sample + '.featureXML')
-                if args['overwrite_features'] == 1 or not os.path.exists(out_path) :
+                if args['overwrite_features'] == 1 or (not os.path.exists(out_path) and not os.path.exists(o)) :
                     logger.info('\n' + 'Writing .featureXML ' + ' openMS ' + sample + '\n')
                     exitscore = call_OpenMS(args['openMS'], path, out_path, args['openms_args'], logger=logger)
                     logger.debug(exitscore)
