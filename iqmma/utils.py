@@ -574,7 +574,7 @@ def charge_states_intensity_processing(path,
     return psm_df
 
 
-def read_PSMs(infile_path, usecols=None, logger=logging.getLogger('function')) :
+def read_PSMs(infile_path, usecols=None, modified_seq=0, logger=logging.getLogger('function')) :
     if infile_path.endswith('.tsv') :
         df1 = pd.read_csv(infile_path, sep = '\t', usecols=usecols)            
     elif infile_path.lower().endswith('.pep.xml') or infile_path.lower().endswith('.pepxml') :
@@ -603,9 +603,12 @@ def read_PSMs(infile_path, usecols=None, logger=logging.getLogger('function')) :
                    inplace=True)
         df1['precursor_neutral_mass'] = df1['calculatedMassToCharge'] * df1['assumed_charge'] - df1['assumed_charge'] * 1.00727649
     
-    if ('peptide' in df1.columns) and ('modified_peptide' in df1.columns) :
+    if modified_seq and ('peptide' in df1.columns) and ('modified_peptide' in df1.columns) :
+        logger.debug('Using modified peptide sequence, modified_peptide column')
         df1.drop(columns='peptide', inplace=True)
         df1.rename(columns={'modified_peptide':'peptide'}, inplace=True)
+    else :
+        logger.debug('Using not modified peptide sequence, peptide column')
     df1['peptide'].str.replace(',', ';')
     if 'protein_descr' in df1.columns:
 

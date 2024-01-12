@@ -84,6 +84,7 @@ def run():
     parser.add_argument('-overwrite_features', nargs='?', help='whether to overwrite existed features files (flag == 1) or use them (flag == 0)', type=int, default=0, const=0, choices=[0, 1])
     parser.add_argument('-overwrite_matching', nargs='?', help='whether to overwrite existed matched files (flag == 1) or use them (flag == 0)', type=int, default=0, const=0, choices=[0, 1])
     parser.add_argument('-overwrite_first_diffacto', nargs='?', help='whether to overwrite existed diffacto files (flag == 1) or use them (flag == 0)', type=int, default=1, const=1, choices=[0, 1])
+    parser.add_argument('-modified_seq', nargs='?', help='whether to use modified peptide sequences (1) or not (0)', type=int, default=1, const=1, choices=[0, 1])
     parser.add_argument('-mixed', nargs='?', help='whether to reanalyze mixed intensities (1) or not (0)', type=int, default=1, const=1, choices=[0, 1])
     parser.add_argument('-venn', nargs='?', help='whether to plot venn diagrams (1) or not (0)', type=int, default=1, const=1, choices=[0, 1])
     parser.add_argument('-pept_intens', nargs='?', help='max_intens - as intensity for peptide would be taken maximal intens between charge states; summ_intens - as intensity for peptide would be taken sum of intens between charge states; z-attached - each charge state would be treated as independent peptide', type=str, default='z-attached', const='z-attached', choices=['z-attached', 'summ_intens', 'max_intens'])
@@ -476,7 +477,7 @@ def run():
 
     logger.info('Start matching features')
     for PSM_path, sample in zip(PSMs_full_paths, samples) :
-        PSM = read_PSMs(PSM_path, logger=logger)
+        PSM = read_PSMs(PSM_path, modified_seq=args['modified_seq'], logger=logger)
         logger.info('sample %s', sample)
         for suf in suffixes :
             if args['overwrite_matching'] == 1 or not os.path.exists(os.path.join(matching_path, sample + '_' + suf + '.tsv')) :
@@ -563,7 +564,7 @@ def run():
             temp_s = set()
             for psm_path in PSMs_full_paths :
                 logger.debug('Reading PSM file {}'.format(psm_path))
-                t = read_PSMs(psm_path)
+                t = read_PSMs(psm_path, modified_seq=args['modified_seq'], logger=logger)
                 if 'q' in list(t.columns) :
                     logger.info('Using q-value < 0.01 filtering on input peptides for file: {}'.format(psm_path))
                     temp_s.update(t[(t['q'] < 0.01) & (t['protein'].str.find(args['decoy_prefix']) < 0)]['peptide'])
