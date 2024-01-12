@@ -656,6 +656,39 @@ def noisygaus(x, a, x0, sigma, b):
     return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2)) + b
 
 
+def noisydoublegaus(x, a_1, x0_1, sigma_1, a_2, x0_2, sigma_2, b):
+    return a_1 * np.exp(-(x - x0_1) ** 2 / (2 * sigma_1 ** 2)) + a_2 * np.exp(-(x - x0_2) ** 2 / (2 * sigma_2 ** 2)) + b
+
+
+def jac_noisygaus(x0, a_1, x0_1, sigma_1, b) :
+    jac = []
+    for x in x0 :
+        # dfdx = a_1 * np.exp(-(x - x0_1) ** 2 / (2 * sigma_1 ** 2)) * -1 * (x - x0_1) / (sigma_1 ** 2) + a_2 * np.exp(-(x - x0_2) ** 2 / (2 * sigma_2 ** 2)) * -1 * (x - x0_2) / (sigma_2 ** 2)
+        dfda_1 = np.exp(-(x - x0_1) ** 2 / (2 * sigma_1 ** 2))
+        dfdx0_1 = a_1 * np.exp(-(x - x0_1) ** 2 / (2 * sigma_1 ** 2)) * (x - x0_1) / (sigma_1 ** 2)
+        dfdsigma_1 = a_1 * np.exp(-(x - x0_1) ** 2 / (2 * sigma_1 ** 2)) * ((x - x0_1) ** 2 / (sigma_1 ** 3))
+        dfdb = 1
+        jac.append((dfda_1, dfdx0_1, dfdsigma_1, dfdb))
+    jac = np.array(jac)
+    return jac
+
+
+def jac_noisydoublegaus(x0, a_1, x0_1, sigma_1, a_2, x0_2, sigma_2, b) :
+    jac = []
+    for x in x0 :
+        # dfdx = a_1 * np.exp(-(x - x0_1) ** 2 / (2 * sigma_1 ** 2)) * -1 * (x - x0_1) / (sigma_1 ** 2) + a_2 * np.exp(-(x - x0_2) ** 2 / (2 * sigma_2 ** 2)) * -1 * (x - x0_2) / (sigma_2 ** 2)
+        dfda_1 = np.exp(-(x - x0_1) ** 2 / (2 * sigma_1 ** 2))
+        dfda_2 = np.exp(-(x - x0_2) ** 2 / (2 * sigma_2 ** 2))
+        dfdx0_1 = a_1 * np.exp(-(x - x0_1) ** 2 / (2 * sigma_1 ** 2)) * (x - x0_1) / (sigma_1 ** 2)
+        dfdx0_2 = a_2 * np.exp(-(x - x0_2) ** 2 / (2 * sigma_2 ** 2)) * (x - x0_2) / (sigma_2 ** 2)
+        dfdsigma_1 = a_1 * np.exp(-(x - x0_1) ** 2 / (2 * sigma_1 ** 2)) * ((x - x0_1) ** 2 / (sigma_1 ** 3))
+        dfdsigma_2 = a_2 * np.exp(-(x - x0_2) ** 2 / (2 * sigma_2 ** 2)) * ((x - x0_2) ** 2 / (sigma_2 ** 3))
+        dfdb = 1
+        jac.append((dfda_1, dfdx0_1, dfdsigma_1, dfda_2, dfdx0_2, dfdsigma_2, dfdb))
+    jac = np.array(jac)
+    return jac
+
+
 def opt_bin(ar, border=16, logger = logging.getLogger('function')) :
     num_bins = 4
     bwidth = (max(ar) - min(ar))/num_bins
@@ -675,6 +708,7 @@ def opt_bin(ar, border=16, logger = logging.getLogger('function')) :
         bbins = np.arange(min(ar), max(ar), bwidth)
         H1, b1 = np.histogram(ar, bins=bbins)
         max_percent = 100*max(H1)/sum(H1)
+        # print(num_bins, max_percent)
         if max_percent <= border :
             bestbins1 = num_bins
             mxp1 = max_percent
@@ -685,12 +719,13 @@ def opt_bin(ar, border=16, logger = logging.getLogger('function')) :
             num_bins -= 1
         else :
             num_bins = round(num_bins/1.1, 0)
-
+        
         bwidth = (max(ar) - min(ar))/num_bins
         bbins = np.arange(min(ar), max(ar), bwidth)
         H1, b1 = np.histogram(ar, bins=bbins)
         max_percent = 100*max(H1)/sum(H1)
-        if max_percent <= border :
+        # print(num_bins, max_percent)
+        if max_percent < border :
             bestbins2 = num_bins
             mxp2 = max_percent
         i += 1
@@ -707,8 +742,7 @@ def opt_bin(ar, border=16, logger = logging.getLogger('function')) :
     return bwidth
 
 
-
-def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = logging.getLogger('function'),) : # flag=False) :
+def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = logging.getLogger('function'), flag=False, doublegaus=False) :
 
     bwidth = opt_bin(true_md, logger=logger)
     bbins = np.arange(mass_left, mass_right, bwidth)
@@ -726,45 +760,68 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = l
         k += 1            
     w = (k-j)
     t = []
-
+#        logger.debug('Интервал значений ' + str(b1[ll]-bwidth) + ' ' + str(b1[rr]))
     for el in true_md :
         if el >= b1[i]-bwidth*(i-j) and el <= b1[i]+bwidth*(k-i) :
             t.append(el)
-    
+    logger.debug(len(t), ' / ', len(true_md))
     bwidth = opt_bin(t, border=min(8,8*0.5/noise_fraction), logger=logger)
     bbins = np.arange(min(t), max(t) , bwidth)
     H2, b2 = np.histogram(t, bins=bbins)
+    if flag :
+        logger.debug('t : {},\nH2 : {},\nb2 : {}'.format(t, H2, b2))
+    
     noise = np.median(H2)
     peaks, prop = find_peaks(H2, height=noise)
-    
-    if len(peaks) >= 2 :
-        m_1 = np.max(prop['peak_heights'])
-        peaks_without_max = [h for h in prop['peak_heights'] if h != m_1]
-        m_1 = np.max(prop['peak_heights'])
-        m_2 = np.max(peaks_without_max)
-        m1_ind_in_H2 = peaks[ np.where(prop['peak_heights'] == m_1)[0][0]]
-        m2_ind_in_H2 = peaks[ np.where(prop['peak_heights'] == m_2)[0][0]]
-        mi_1 = b2[1 + m1_ind_in_H2]
-        mi_2 = b2[1 + m2_ind_in_H2]
-        s_1 = np.abs(mi_1 - mi_2)/6
-        s_2 = s_1
-    else :
-        m_1 = np.max(H2)
-        m_2 = m_1
-        mi_1 = b2[1 + np.argmax(H2)]
-        mi_2 = mi_1
-        s_1 = (np.max(b2)-np.min(b2))/6
-        s_2 = s_1
-    p0=[m_1, mi_1, s_1, m_2, mi_2, s_2, noise]
-    popt, pcov = curve_fit(noisydoublegaus, b2[1:], H2, p0=p0)
-    logger.debug(popt)
-    
-    peak_1, peak_2 = popt[:3], popt[3:6]
-    if peak_1[2] >= peak_2[2] :
-        peak = peak_1
-    else :
-        peak = peak_2
-    mass_shift, mass_sigma = peak[1], min(abs(peak[2]), (np.max(b2)-np.min(b2))/6)
+    try :
+        if len(peaks) >= 2 and doublegaus :
+            m_1 = np.max(prop['peak_heights'])
+            peaks_without_max = [h for h in prop['peak_heights'] if h != m_1]
+            m_1 = np.max(prop['peak_heights'])
+            m_2 = np.max(peaks_without_max)
+            m1_ind_in_H2 = peaks[ np.where(prop['peak_heights'] == m_1)[0][0]]
+            m2_ind_in_H2 = peaks[ np.where(prop['peak_heights'] == m_2)[0][0]]
+            mi_1 = b2[1 + m1_ind_in_H2]
+            mi_2 = b2[1 + m2_ind_in_H2]
+            s_1 = np.abs(mi_1 - mi_2)/6
+            s_2 = s_1
+            p0=[m_1, mi_1, s_1, m_2, mi_2, s_2, noise]
+            maxfev = min(100*len(b2), 10000)
+            max_sigma = (np.max(t)-np.min(t))/3
+            bounds = [[0, np.min(t), 0, 0, np.min(t), 0, 0], [np.inf, np.max(t), max_sigma, np.inf, np.max(t), max_sigma, np.inf]]
+            popt, pcov = curve_fit(noisydoublegaus, b2[1:], H2, p0=p0, 
+                                   bounds=bounds, 
+                                   jac=jac_noisydoublegaus, 
+                                   maxfev=maxfev, 
+                                   full_output=False, 
+                                   loss='linear')
+            logger.debug(popt)
+            peak_1, peak_2 = popt[:3], popt[3:6]
+            if peak_1[0] >= peak_2[0] :
+                peak = peak_1
+            else :
+                peak = peak_2
+            mass_shift, mass_sigma = peak[1], abs(peak[2])
+
+        else :
+            m_1 = np.max(H2)
+            mi_1 = b2[1 + np.argmax(H2)]
+            s_1 = (np.max(b2) - np.min(b2))/6
+            p0=[m_1, mi_1, s_1, noise]
+            max_sigma = (np.max(t)-np.min(t))/3
+            maxfev = min(100*len(b2), 10000)
+            bounds = [[0, np.min(t), 0, 0], [np.inf, np.max(t), max_sigma, np.inf]]
+            popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=p0, 
+                                   bounds=bounds, 
+                                   jac=jac_noisygaus, 
+                                   maxfev=maxfev, 
+                                   full_output=False, 
+                                   loss='linear')
+            mass_shift, mass_sigma = popt[1], abs(popt[2])
+    except RunTimeError :
+        logger.debug('WARNING! RunTimeError in curve_fit')
+        logger.debug('H2 : ' + H2)
+        logger.debug('b2 : ' + b2)
 
     if check_gauss:
         logger.debug('GAUSS FIT, %f, %f' % (percentileofscore(t, mass_shift - 3 * mass_sigma), percentileofscore(t, mass_shift + 3 * mass_sigma)))
@@ -773,6 +830,10 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = l
             mass_sigma = scoreatpercentile(np.abs(t-mass_shift), 95) / 2
 
     logger.debug('shift: ' + str(mass_shift) + '\t' + 'sigma: ' + str(mass_sigma))
+    # fig, ax = plt.subplots(1, 1, figsize=(8*cm, 8*cm), )
+    # ax.scatter(b2[1:], H2)
+    # ax.plot(b2[1:], noisydoublegaus(b2[1:], *popt))
+    # fig.show()
     
     return mass_shift, mass_sigma, pcov[0][0]
 
@@ -953,7 +1014,7 @@ def found_mean_sigma(df_features,
                 while el['psm_rt_exp'] < RT_exp_bins_left_borders[i] and i > 0 :
                     i -= 1
                 el['bin'] = i
-                calc_medians_rt_list[i].append(el['rt1'])
+            calc_medians_rt_list[i].append(sorted(v, key=lambda x: abs(x[sort]))[0]['rt1'])
         
         median_rt1 = {}
         for i in range(numbins) :
@@ -1017,7 +1078,7 @@ def optimized_search_with_isotope_error_(df_features,
                 else :
                     mean_rt1, sigma_rt1 = found_mean_sigma(df_features,psms, 'rt1', logger=logger)
             except RuntimeError :
-                logger.warning('rt1: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev = 1000.')
+                logger.warning('rt1: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev.')
                 mean_rt1, sigma_rt1 = 0, max(rtStart_array_ms1)/25
 
         if mean_rt2 is False and sigma_rt2 is False:
@@ -1025,7 +1086,7 @@ def optimized_search_with_isotope_error_(df_features,
             try :
                 mean_rt2, sigma_rt2 = found_mean_sigma(df_features,psms, 'rt2', logger=logger)
             except RuntimeError :
-                logger.warning('rt2: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev = 1000.')
+                logger.warning('rt2: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev.')
                 mean_rt2, sigma_rt2 = 0, max(rtEnd_array_ms1)/25
 
         if mean_mz is False and sigma_mz is False:
@@ -1033,7 +1094,7 @@ def optimized_search_with_isotope_error_(df_features,
             try :
                 mean_mz, sigma_mz = found_mean_sigma(df_features,psms,'mz_diff_ppm', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2, logger=logger)
             except RuntimeError :
-                logger.warning('mz: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev = 1000.')
+                logger.warning('mz: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev.')
                 mean_mz, sigma_mz = 0, 100/3
 
         if mean_im is False and sigma_im is False:
@@ -1122,10 +1183,14 @@ def mbr(feat,II,PSMs_full_paths, PSM_path, logger=logging.getLogger('function'))
         if PSM_path != j:
             logger.debug('Matching PSMs from {}'.format(j))
             psm_j_fdr = read_PSMs(j)
+            ll = len(psm_j_fdr)
             psm_j_fdr['pep_charge'] = psm_j_fdr['peptide'] + psm_j_fdr['assumed_charge'].map(str)
-            psm_j_fdr = psm_j_fdr[psm_j_fdr['pep_charge'].apply(lambda x: x not in found_set)]
-            logger.debug('Real PSMs count in the input to matching {}'.format(len(psm_j_fdr)))
+            if len(psm_j_fdr) > 3000 :
+                psm_j_fdr = psm_j_fdr[psm_j_fdr['pep_charge'].apply(lambda x: x not in found_set)]
+            logger.debug('Real PSMs count in the input to matching {} / {}'.format(len(psm_j_fdr), ll))
             III = optimized_search_with_isotope_error_(feat, psm_j_fdr, isotopes_array=[0,1,-1,2,-2], mbr_flag=True, logger=logger)[0]
+            if len(psm_j_fdr) <= 3000 :
+                III = III[III['pep_charge'].apply(lambda x: x not in found_set)]
             III = III.sort_values(by = 'feature_intensityApex', ascending = False)
             III = III.drop_duplicates(subset = 'pep_charge')
             II = pd.concat([II, III])
