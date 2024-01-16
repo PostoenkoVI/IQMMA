@@ -174,13 +174,13 @@ def run():
     if args['threads'] :
         if args['bio2'] :
             if not 'nprocs' in args['bio2_args'] :
-                args['bio2_args'] = args['bio2_args'].rstrip(' ') + ' -nprocs ' + str(args['threads'])
+                args['bio2_args'] = args['bio2_args'].strip('"'"'") + ' -nprocs ' + str(args['threads'])
                 logger.debug('-bio2_args extended with -nprocs {}'.format(args['threads']))
             else :
                 logger.debug('-bio2_args already contains -nprocs option, iqmma -threads {} is ignored'.format(args['threads']))
         if args['openMS'] :
             if not 'threads' in args['openms_args'] :
-                args['openms_args'] = args['openms_args'].rstrip(' ') + ' -threads ' + str(args['threads'])
+                args['openms_args'] = args['openms_args'].strip('"'"'") + ' -threads ' + str(args['threads'])
                 logger.debug('-openms_args extended with -threads {}'.format(args['threads']))
             else :
                 logger.debug('-openms_args already contains -threads option, iqmma -threads {} is ignored'.format(args['threads']))
