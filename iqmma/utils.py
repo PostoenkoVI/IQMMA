@@ -531,6 +531,9 @@ def charge_states_intensity_processing(path,
     if allowed_prots :
         psm_df['protein'] = psm_df['protein'].apply(lambda z: ';'.join([u for u in ast.literal_eval(z) if u in allowed_prots]))
         psm_df = psm_df[psm_df['protein'].apply(lambda z: z != '')]
+    else :
+        psm_df['protein'] = psm_df['protein'].apply(lambda z: ';'.join([u for u in ast.literal_eval(z)]))
+        psm_df = psm_df[psm_df['protein'].apply(lambda z: z != '')]
     
     if 'compensation_voltage' in cols :
         unique_comb_cols = ['peptide', 'assumed_charge', 'compensation_voltage']
