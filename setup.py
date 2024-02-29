@@ -3,8 +3,7 @@
 '''
 setup.py file for iqmma
 '''
-import os
-from setuptools import setup, find_packages, Extension
+from setuptools import setup
 
 version = open('VERSION').readline().strip()
 
@@ -27,5 +26,5 @@ setup(
     license              = 'License :: OSI Approved :: Apache Software License',
     packages         = ['iqmma', ],
     package_data     = {'iqmma': ['default.ini', 'utils.ini']},
-    entry_points         = {'console_scripts': ['iqmma = iqmma.iqmma:run',]},
+    entry_points         = {'console_scripts': ['iqmma = iqmma.cli:run',]},
     )
