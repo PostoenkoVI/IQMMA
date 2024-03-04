@@ -24,13 +24,13 @@ def process_files(args):
     if args['threads'] :
         if args['bio2'] :
             if not 'nprocs' in args['bio2_args'] :
-                args['bio2_args'] = args['bio2_args'].rstrip(' ') + ' -nprocs ' + str(args['threads'])
+                args['bio2_args'] = args['bio2_args'].strip('"'"'") + ' -nprocs ' + str(args['threads'])
                 logger.debug('-bio2_args extended with -nprocs {}'.format(args['threads']))
             else :
                 logger.debug('-bio2_args already contains -nprocs option, iqmma -threads {} is ignored'.format(args['threads']))
         if args['openMS'] :
             if not 'threads' in args['openms_args'] :
-                args['openms_args'] = args['openms_args'].rstrip(' ') + ' -threads ' + str(args['threads'])
+                args['openms_args'] = args['openms_args'].strip('"'"'") + ' -threads ' + str(args['threads'])
                 logger.debug('-openms_args extended with -threads {}'.format(args['threads']))
             else :
                 logger.debug('-openms_args already contains -threads option, iqmma -threads {} is ignored'.format(args['threads']))
@@ -275,11 +275,15 @@ def process_files(args):
 
     if args['openMS'] :
         if os.path.exists(os.path.normpath(args['openMS'])) :
-            out_path = os.path.join(feature_path, 'openMS')
-            os.makedirs(out_path, exist_ok=True)
+            out_path_dir = os.path.join(feature_path, 'openMS')
+            try :
+                os.makedirs(out_path_dir, exist_ok=True)
+            except :
+                out_path_dir = feature_path
             for path, sample in zip(mzML_paths, samples) :
-                out_path = os.path.join(feature_path, 'openMS', sample + '.featureXML')
-                if args['overwrite_features'] == 1 or not os.path.exists(out_path) :
+                o = os.path.join(feature_path, sample + '_features_' + 'openMS.tsv')
+                out_path = os.path.join(out_path_dir, sample + '.featureXML')
+                if args['overwrite_features'] == 1 or (not os.path.exists(out_path) and not os.path.exists(o)) :
                     logger.info('\n' + 'Writing .featureXML ' + ' openMS ' + sample + '\n')
                     exitscore = call_OpenMS(args['openMS'], path, out_path, args['openms_args'], logger=logger)
                     logger.debug(exitscore)
@@ -287,7 +291,7 @@ def process_files(args):
                     logger.info('\n' + 'Not ovetwriting .featureXML ' + ' openMS ' + sample + '\n')
 
             for path, sample in zip(mzML_paths, samples) :
-                out_path = os.path.join(feature_path, 'openMS', sample + '.featureXML')
+                out_path = os.path.join(out_path_dir, sample + '.featureXML')
                 o = os.path.join(feature_path, sample + '_features_' + 'openMS.tsv')
                 if args['overwrite_features'] == 1 or not os.path.exists(o) :
                     logger.info('Writing features ' + ' openMS ' + sample)
@@ -326,7 +330,7 @@ def process_files(args):
 
     logger.info('Start matching features')
     for PSM_path, sample in zip(PSMs_full_paths, samples) :
-        PSM = read_PSMs(PSM_path, logger=logger)
+        PSM = read_PSMs(PSM_path, modified_seq=args['modified_seq'], logger=logger)
         logger.info('sample %s', sample)
         for suf in suffixes :
             if args['overwrite_matching'] == 1 or not os.path.exists(os.path.join(matching_path, sample + '_' + suf + '.tsv')) :
@@ -413,7 +417,7 @@ def process_files(args):
             temp_s = set()
             for psm_path in PSMs_full_paths :
                 logger.debug('Reading PSM file {}'.format(psm_path))
-                t = read_PSMs(psm_path)
+                t = read_PSMs(psm_path, modified_seq=args['modified_seq'], logger=logger)
                 if 'q' in list(t.columns) :
                     logger.info('Using q-value < 0.01 filtering on input peptides for file: {}'.format(psm_path))
                     temp_s.update(t[(t['q'] < 0.01) & (t['protein'].str.find(args['decoy_prefix']) < 0)]['peptide'])
