@@ -159,7 +159,7 @@ def generate_users_output(diffacto_out={},
             table = pd.read_csv(diffacto_out[suf], sep='\t')
         except :
             i += 1
-            logger.critical('Something goes wrong with diffacto output file {}'.format(diffacto_out[suf]))
+            logger.critical('Something goes wrong with diffacto output file %s', diffacto_out[suf])
             if i == len(suffixes) :
                 logger.critical('All diffacto output is unreadable')
                 return dict([(suf, 0) for suf in suffixes])
@@ -191,7 +191,7 @@ def generate_users_output(diffacto_out={},
         if not dynamic_fc_threshold :
             table = table[table['pval_adj_pass']][['Protein', 'P(PECA)', 'log2_FC']]
             border_fc = fc_threshold
-            logger.info('Static fold change threshold is applied for {}: {} {}'.format(suf, -1*border_fc, border_fc))
+            logger.info('Static fold change threshold is applied for %s: %s %s', suf, -1*border_fc, border_fc)
             table = table[abs(table['log2_FC']) >= border_fc]
         else:
             t = table[~table['pval_adj_pass']]['log2_FC'].to_numpy()
@@ -205,7 +205,7 @@ def generate_users_output(diffacto_out={},
             shift, sigma = popt[1], abs(popt[2])
             right_fc_threshold = shift + 3*sigma
             left_fc_threshold = shift - 3*sigma
-            logger.info('Dynamic fold change threshold is applied for {}: {} {}'.format(suf, left_fc_threshold, right_fc_threshold, ))
+            logger.info('Dynamic fold change threshold is applied for %s: %s %s', suf, left_fc_threshold, right_fc_threshold)
             table = table[table['pval_adj_pass']][['Protein', 'P(PECA)', 'log2_FC']]
             table = table.query('`log2_FC` >= @right_fc_threshold or `log2_FC` <= @left_fc_threshold')
         comp_df = comp_df.merge(table, how='outer', on='Protein', suffixes = (None, '_'+suf))
@@ -764,12 +764,12 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, flag=False
     for el in true_md :
         if el >= b1[i]-bwidth*(i-j) and el <= b1[i]+bwidth*(k-i) :
             t.append(el)
-    logger.debug('Values after noise filtering {} / {}'.format( len(t), len(true_md)))
+    logger.debug('Values after noise filtering %d / %d', len(t), len(true_md))
     bwidth = opt_bin(t, border=min(8,8*0.5/noise_fraction))
     bbins = np.arange(min(t), max(t) , bwidth)
     H2, b2 = np.histogram(t, bins=bbins)
     if flag :
-        logger.debug('t : {},\nH2 : {},\nb2 : {}'.format(t, H2, b2))
+        logger.debug('t : %s; H2 : %s, b2 : %s', t, H2, b2)
 
     noise = np.median(H2)
     peaks, prop = find_peaks(H2, height=noise)
@@ -1108,7 +1108,7 @@ def optimized_search_with_isotope_error_(df_features,
                     sigma_im = False
 
     else :
-        logger.warning('Too few psms to calculate optimal shift and sigma for optimal search: {}'.format(len(psms)))
+        logger.warning('Too few psms to calculate optimal shift and sigma for optimal search: %d', len(psms))
         rtStart_array_ms1 = df_features['rtStart'].values
         rtEnd_array_ms1 = df_features['rtEnd'].values
         sigma1 = max(rtStart_array_ms1)/25
@@ -1125,15 +1125,15 @@ def optimized_search_with_isotope_error_(df_features,
                     min_im = min(im_array_ms1)
                     mean_im = 0
                     sigma_im = (max_im - min_im)/2
-        logger.debug('Using rough parameters:'.format())
-        logger.debug(' {}: {}\n'.format('rt1_diff', mean1))
-        logger.debug(' {}: {}\n'.format('rt1_sigma', sigma1))
-        logger.debug(' {}: {}\n'.format('rt2_diff', mean1))
-        logger.debug(' {}: {}\n'.format('rt2_sigma', sigma1))
-        logger.debug(' {}: {}\n'.format('mz_diff', mean_mz))
-        logger.debug(' {}: {}\n'.format('mz_sigma', sigma_mz))
-        logger.debug(' {}: {}\n'.format('im_diff', mean_im))
-        logger.debug(' {}: {}\n'.format('im_sigma', sigma_im))
+        logger.debug('Using rough parameters:')
+        logger.debug('rt1_diff: %s', mean1)
+        logger.debug('rt1_sigma: %s', sigma1)
+        logger.debug('rt2_diff: %s', mean1)
+        logger.debug('rt2_sigma: %s', sigma1)
+        logger.debug('mz_diff: %s', mean_mz)
+        logger.debug('mz_sigma: %s', sigma_mz)
+        logger.debug('im_diff: %s', mean_im)
+        logger.debug('im_sigma: %s', sigma_im)
 
 
     results_isotope = total(df_features = df_features,psms =psms,mean1 = mean_rt1, sigma1 = sigma_rt1,mean2 = mean_rt2, sigma2 = sigma_rt2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, mean_im = mean_im, sigma_im = sigma_im, isotopes_array=isotopes_array)
@@ -1176,13 +1176,13 @@ def mbr(feat,II,PSMs_full_paths, PSM_path):
     found_set = set(match_between_runs_copy01['pep_charge'])
     for j in PSMs_full_paths:
         if PSM_path != j:
-            logger.debug('Matching PSMs from {}'.format(j))
+            logger.debug('Matching PSMs from %s', j)
             psm_j_fdr = read_PSMs(j)
             ll = len(psm_j_fdr)
             psm_j_fdr['pep_charge'] = psm_j_fdr['peptide'] + psm_j_fdr['assumed_charge'].map(str)
             if len(psm_j_fdr) > 3000 :
                 psm_j_fdr = psm_j_fdr[psm_j_fdr['pep_charge'].apply(lambda x: x not in found_set)]
-            logger.debug('Real PSMs count in the input to matching {} / {}'.format(len(psm_j_fdr), ll))
+            logger.debug('Real PSMs count in the input to matching %d / %d', len(psm_j_fdr), ll)
             III = optimized_search_with_isotope_error_(feat, psm_j_fdr, isotopes_array=[0,1,-1,2,-2], mbr_flag=True)[0]
             if len(psm_j_fdr) <= 3000 :
                 III = III[III['pep_charge'].apply(lambda x: x not in found_set)]
