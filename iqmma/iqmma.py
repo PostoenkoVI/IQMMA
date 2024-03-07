@@ -243,7 +243,7 @@ def process_files(args):
                 outName = sample + '_features_' + 'dino' + '.tsv'
                 if args['overwrite_features'] == 1 or not os.path.exists(os.path.join(feature_path, outName)) :
                     logger.info('\n' + 'Writing features' + ' dino ' + sample + '\n')
-                    exitscore = call_Dinosaur(args['dino'], path, feature_path, outName, args['dino_args'], logger=logger)
+                    exitscore = call_Dinosaur(args['dino'], path, feature_path, outName, args['dino_args'])
                     logger.debug(exitscore)
                 else :
                     logger.info('\n' + 'Not overwriting features ' + ' dino ' + sample + '\n')
@@ -262,7 +262,7 @@ def process_files(args):
                 outPath = os.path.join(feature_path, sample + '_features_bio2.tsv')
                 if args['overwrite_features'] == 1 or not os.path.exists(outPath) :
                     logger.info('\n' + 'Writing features ' + ' bio2 ' + sample + '\n')
-                    exitscore = call_Biosaur2(args['bio2'], path, outPath, args['bio2_args'], logger=logger)
+                    exitscore = call_Biosaur2(args['bio2'], path, outPath, args['bio2_args'])
                     logger.debug(exitscore)
                 else :
                     logger.info('\n' + 'Not overwriting features ' + ' bio2 ' + sample + '\n')
@@ -285,7 +285,7 @@ def process_files(args):
                 out_path = os.path.join(out_path_dir, sample + '.featureXML')
                 if args['overwrite_features'] == 1 or (not os.path.exists(out_path) and not os.path.exists(o)) :
                     logger.info('\n' + 'Writing .featureXML ' + ' openMS ' + sample + '\n')
-                    exitscore = call_OpenMS(args['openMS'], path, out_path, args['openms_args'], logger=logger)
+                    exitscore = call_OpenMS(args['openMS'], path, out_path, args['openms_args'])
                     logger.debug(exitscore)
                 else :
                     logger.info('\n' + 'Not ovetwriting .featureXML ' + ' openMS ' + sample + '\n')
@@ -330,7 +330,7 @@ def process_files(args):
 
     logger.info('Start matching features')
     for PSM_path, sample in zip(PSMs_full_paths, samples) :
-        PSM = read_PSMs(PSM_path, modified_seq=args['modified_seq'], logger=logger)
+        PSM = read_PSMs(PSM_path, modified_seq=args['modified_seq'])
         logger.info('sample %s', sample)
         for suf in suffixes :
             if args['overwrite_matching'] == 1 or not os.path.exists(os.path.join(matching_path, sample + '_' + suf + '.tsv')) :
@@ -338,12 +338,12 @@ def process_files(args):
                 feats = feats.sort_values(by='mz')
 
                 logger.info(suf + ' features ' + sample + '\n' + 'START')
-                temp_df = optimized_search_with_isotope_error_(feats, PSM, isotopes_array=args['isotopes'], logger=logger)[0]
-                # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2], logger=logger)[0]
+                temp_df = optimized_search_with_isotope_error_(feats, PSM, isotopes_array=args['isotopes'])[0]
+                # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2])[0]
 
                 if args['mbr']:
                     logger.info('Start match-between-runs for features {} {}'.format(sample, suf))
-                    temp_df = mbr(feats, temp_df, PSMs_full_paths, PSM_path, logger=logger)
+                    temp_df = mbr(feats, temp_df, PSMs_full_paths, PSM_path)
 
                 median = temp_df['feature_intensityApex'].median()
                 temp_df['med_norm_feature_intensityApex'] = temp_df['feature_intensityApex']/median
@@ -417,7 +417,7 @@ def process_files(args):
             temp_s = set()
             for psm_path in PSMs_full_paths :
                 logger.debug('Reading PSM file {}'.format(psm_path))
-                t = read_PSMs(psm_path, modified_seq=args['modified_seq'], logger=logger)
+                t = read_PSMs(psm_path, modified_seq=args['modified_seq'])
                 if 'q' in list(t.columns) :
                     logger.info('Using q-value < 0.01 filtering on input peptides for file: {}'.format(psm_path))
                     temp_s.update(t[(t['q'] < 0.01) & (t['protein'].str.find(args['decoy_prefix']) < 0)]['peptide'])
@@ -455,7 +455,6 @@ def process_files(args):
                                                                         allowed_pept_modif=allowed_pept_modif,
                                                                         allowed_prots=allowed_prots, # set()
                                                                         out_path=out_path,
-                                                                        logger=logger
                 )
                 logger.debug('Done %s', sample)
 
@@ -472,7 +471,6 @@ def process_files(args):
                                           samples_dict = samples_dict,
                                           write_peptides=True,
                                           str_of_other_args = args['diffacto_args'],
-                                          logger=logger
                                          )
             logger.info('Done Diffacto run with %s', suf)
             psms_dict = False
@@ -496,11 +494,10 @@ def process_files(args):
             fc_threshold = args['fc_threshold'],
             dynamic_fc_threshold = args['dynamic_fc_threshold'],
             save = save,
-            logger=logger
         )
 
         if sum(list(num_changed_prots.values())) == 0 :
-            logging.warning('No differentially expressed proteins detected in separate diffacto runs')
+            logger.warning('No differentially expressed proteins detected in separate diffacto runs')
 
         if args['choice'] == 0 :
             default_order = sorted(suffixes, key= lambda x: num_changed_prots[x], reverse=True)
@@ -523,7 +520,6 @@ def process_files(args):
                               out_dir= charge_faims_intensity_path,
                               default_order= default_order,
                               to_diffacto= to_diffacto,
-                              logger=logger
                               )
 
             logger.info('Mixing intensities DONE with exitscore {}'.format(a))
@@ -541,7 +537,6 @@ def process_files(args):
                                       psm_dfs_dict = {},
                                       samples_dict = samples_dict,
                                       str_of_other_args = args['diffacto_args'],
-                                      logger=logger
                                      )
             logger.info('Done Diffacto run with {} with exitscore {}'.format(suf, exitscore))
 
@@ -560,7 +555,6 @@ def process_files(args):
                 fc_threshold = args['fc_threshold'],
                 dynamic_fc_threshold = args['dynamic_fc_threshold'],
                 save = save,
-                logger=logger
             )
             logger.info('Numbers of differentially expressed proteins:')
             for suf in suffixes+['mixed'] :

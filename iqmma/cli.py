@@ -4,6 +4,9 @@ import os
 import logging
 from . import utils, iqmma
 
+logger = logging.getLogger()
+
+
 def run():
     parser = argparse.ArgumentParser(
         description = 'Proteomics quantitation workflow',
@@ -117,11 +120,10 @@ def run():
     if not isinstance(numeric_level, int):
         raise ValueError('Invalid log level: %s' % loglevel)
 
-    logger = logging.getLogger('logger')
-    logger.setLevel(loglevel)
+    logger.setLevel(numeric_level)
     formatter = logging.Formatter('%(asctime)s [%(levelname)s]: %(message)s')
     ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(loglevel)
+    ch.setLevel(numeric_level)
     ch.setFormatter(formatter)
     logger.addHandler(ch)
 
@@ -130,7 +132,7 @@ def run():
         log_directory = os.path.dirname(args['log_path'])
         os.makedirs(log_directory, exist_ok=True)
         fh = logging.FileHandler(args['log_path'], mode='w', encoding='utf-8')
-        fh.setLevel(loglevel)
+        fh.setLevel(numeric_level)
         fh.setFormatter(formatter)
         logger.addHandler(fh)
 
