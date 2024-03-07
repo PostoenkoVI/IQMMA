@@ -242,11 +242,11 @@ def process_files(args):
             for path, sample in zip(mzML_paths, samples) :
                 outName = sample + '_features_' + 'dino' + '.tsv'
                 if args['overwrite_features'] == 1 or not os.path.exists(os.path.join(feature_path, outName)) :
-                    logger.info('\n' + 'Writing features' + ' dino ' + sample + '\n')
+                    logger.info('Writing features' + ' dino ' + sample)
                     exitscore = call_Dinosaur(args['dino'], path, feature_path, outName, args['dino_args'])
                     logger.debug(exitscore)
                 else :
-                    logger.info('\n' + 'Not overwriting features ' + ' dino ' + sample + '\n')
+                    logger.info('Not overwriting features ' + ' dino ' + sample)
         else :
             logger.critical('Skipping Dinosaur. Path to Dinosaur does not exists: {}'.format(args['dino']))
 
@@ -261,11 +261,11 @@ def process_files(args):
             for path, sample in zip(mzML_paths, samples) :
                 outPath = os.path.join(feature_path, sample + '_features_bio2.tsv')
                 if args['overwrite_features'] == 1 or not os.path.exists(outPath) :
-                    logger.info('\n' + 'Writing features ' + ' bio2 ' + sample + '\n')
+                    logger.info('Writing features ' + ' bio2 ' + sample)
                     exitscore = call_Biosaur2(args['bio2'], path, outPath, args['bio2_args'])
                     logger.debug(exitscore)
                 else :
-                    logger.info('\n' + 'Not overwriting features ' + ' bio2 ' + sample + '\n')
+                    logger.info('Not overwriting features ' + ' bio2 ' + sample)
         else :
             logger.critical('Skipping Biosaur2. Path to Biosaur2 does not exists: {}'.format(args['bio2']))
 
@@ -284,11 +284,11 @@ def process_files(args):
                 o = os.path.join(feature_path, sample + '_features_' + 'openMS.tsv')
                 out_path = os.path.join(out_path_dir, sample + '.featureXML')
                 if args['overwrite_features'] == 1 or (not os.path.exists(out_path) and not os.path.exists(o)) :
-                    logger.info('\n' + 'Writing .featureXML ' + ' openMS ' + sample + '\n')
+                    logger.info('Writing .featureXML ' + ' openMS ' + sample)
                     exitscore = call_OpenMS(args['openMS'], path, out_path, args['openms_args'])
                     logger.debug(exitscore)
                 else :
-                    logger.info('\n' + 'Not ovetwriting .featureXML ' + ' openMS ' + sample + '\n')
+                    logger.info('Not ovetwriting .featureXML ' + ' openMS ' + sample)
 
             for path, sample in zip(mzML_paths, samples) :
                 out_path = os.path.join(out_path_dir, sample + '.featureXML')
@@ -310,7 +310,7 @@ def process_files(args):
                     b = pd.DataFrame(features_list, columns = ['id', 'mz', 'charge', 'rtStart', 'rtEnd', 'intensityApex'])
                     b.to_csv(o, sep='\t', encoding='utf-8')
                 else :
-                    logger.info('Not overwriting features ' + ' openMS ' + sample + '\n')
+                    logger.info('Not overwriting features ' + ' openMS ' + sample)
         else :
             logger.critical('Skipping OpenMS. Path to OpenMSFeatureFinderCentroided does not exists: {}'.format(args['openMS']))
 
@@ -337,7 +337,7 @@ def process_files(args):
                 feats = pd.read_csv( os.path.join(feature_path, sample + '_features_' + suf + '.tsv'), sep = '\t')
                 feats = feats.sort_values(by='mz')
 
-                logger.info(suf + ' features ' + sample + '\n' + 'START')
+                logger.info(suf + ' features ' + sample + 'START')
                 temp_df = optimized_search_with_isotope_error_(feats, PSM, isotopes_array=args['isotopes'])[0]
                 # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2])[0]
 
