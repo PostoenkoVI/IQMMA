@@ -19,7 +19,7 @@ class EmptyFileError(ValueError):
 logger = logging.getLogger(__name__)
 
 
-def process_files(args, logger=logging.getLogger('function')):
+def process_files(args):
 
     if args['threads'] :
         if args['bio2'] :

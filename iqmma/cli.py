@@ -152,7 +152,7 @@ def run():
             logger.warning('Invalid path for example cfg creation. Directory does not exist')
             return 1
 
-    iqmma.process_files(args, logger=logger)
+    iqmma.process_files(args)
 
 if __name__ == '__main__':
     run()
