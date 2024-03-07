@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import ast
+import sys
 import os
 import subprocess
 import matplotlib
@@ -1193,4 +1194,4 @@ def mbr(feat,II,PSMs_full_paths, PSM_path):
 
 def log_subprocess_output(pipe):
     for line in iter(pipe.readline, b''): # b'\n'-separated lines
-        logger.info('From subprocess: %r', line)
+        logger.info('From subprocess: %s', line.decode(sys.stdout.encoding).rstrip('\n'))
