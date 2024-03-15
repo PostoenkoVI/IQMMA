@@ -1,9 +1,9 @@
 pyteomics
 matplotlib
 scipy
-numpy==1.23.1
+numpy
 pandas
 venn
 lxml
 biosaur2
-diffacto
+diffacto @ git+https://github.com/levitsky/diffacto.git@fix/dtype
