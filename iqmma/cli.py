@@ -22,13 +22,16 @@ def run():
             -dif path_to_Diffacto
             -s1 paths_to_mzml_files_from_sample_1_*.mzML
             -s2 paths_to_mzml_files_from_sample_2_*.mzML
+            -outdir output_directory
 
     Basic command for matching peptide intensities: (all mzml files goes into first sample without any differences, no quantitation applied)
 
     $ iqmma -bio2 path_to_Biosaur2
             -dino path_to_Dinosaur
             -openms path_to_openMS
-            -dif path_to_Diffacto -s1 paths_to_all_mzml_files_*.mzML -outdir out_path
+            -dif path_to_Diffacto
+            -s1 paths_to_all_mzml_files_*.mzML
+            -outdir output_directory
 
     Or both mods could be used with config file for an advanced usage and configuration:
 
