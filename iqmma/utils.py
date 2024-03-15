@@ -1,23 +1,21 @@
 import pandas as pd
 import numpy as np
-import copy
 import ast
+import sys
 import os
 import subprocess
-import sys
 import matplotlib
 import matplotlib.pyplot as plt
 from collections import defaultdict, Counter
 from re import sub
-import pyteomics
-from matplotlib.ticker import PercentFormatter
 from pyteomics import pepxml, mzid
-import venn
 from venn import venn
-from scipy.stats import pearsonr, scoreatpercentile, percentileofscore
+from scipy.stats import scoreatpercentile, percentileofscore
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
 import logging
+
+logger = logging.getLogger(__name__)
 
 
 class WrongInputError(NotImplementedError):
@@ -83,7 +81,7 @@ def write_example_cfg(path, dct_args):
         f.write('# here you can set your parameters\n')
 
 
-def call_Dinosaur(path_to_fd, mzml_path, outdir, outname, str_of_other_args, logger = logging.getLogger('function') ) :
+def call_Dinosaur(path_to_fd, mzml_path, outdir, outname, str_of_other_args) :
     if str_of_other_args :
         other_args = ['--' + x.strip().replace(' ', '=') for x in str_of_other_args.strip('"'"'").split('--')]
     else :
@@ -97,12 +95,12 @@ def call_Dinosaur(path_to_fd, mzml_path, outdir, outname, str_of_other_args, log
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
     with process.stdout:
-        log_subprocess_output(process.stdout, logger=logger)
+        log_subprocess_output(process.stdout)
     exitscore = process.wait()
     os.rename(os.path.join(outdir, outname + '.features.tsv'),  os.path.join(outdir, outname) )
     return exitscore
 
-def call_Biosaur2(path_to_fd, mzml_path, outpath, str_of_other_args, logger = logging.getLogger('function')) :
+def call_Biosaur2(path_to_fd, mzml_path, outpath, str_of_other_args) :
     if str_of_other_args :
         other_args = [x.strip() for x in str_of_other_args.strip('"'"'").split(' ')]
     else :
@@ -113,11 +111,11 @@ def call_Biosaur2(path_to_fd, mzml_path, outpath, str_of_other_args, logger = lo
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
     with process.stdout:
-        log_subprocess_output(process.stdout, logger=logger)
+        log_subprocess_output(process.stdout)
     exitscore = process.wait()
     return exitscore
 
-def call_OpenMS(path_to_fd, mzml_path, outpath, str_of_other_args, logger = logging.getLogger('function')) :
+def call_OpenMS(path_to_fd, mzml_path, outpath, str_of_other_args) :
     if str_of_other_args :
         other_args = [x.strip() for x in str_of_other_args.strip('"'"'").split(' ')]
     else :
@@ -131,7 +129,7 @@ def call_OpenMS(path_to_fd, mzml_path, outpath, str_of_other_args, logger = logg
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
     with process.stdout:
-        log_subprocess_output(process.stdout, logger=logger)
+        log_subprocess_output(process.stdout)
     exitscore = process.wait()
     return exitscore
 
@@ -146,7 +144,6 @@ def generate_users_output(diffacto_out={},
                           fc_threshold=2,
                           dynamic_fc_threshold=True,
                           save = True,
-                          logger = logging.getLogger('function')
                           ) :
     # diffacto_out = {
     #     'suf1': path_to_diffacto_results,
@@ -162,7 +159,7 @@ def generate_users_output(diffacto_out={},
             table = pd.read_csv(diffacto_out[suf], sep='\t')
         except :
             i += 1
-            logger.critical('Something goes wrong with diffacto output file {}'.format(diffacto_out[suf]))
+            logger.critical('Something goes wrong with diffacto output file %s', diffacto_out[suf])
             if i == len(suffixes) :
                 logger.critical('All diffacto output is unreadable')
                 return dict([(suf, 0) for suf in suffixes])
@@ -194,12 +191,12 @@ def generate_users_output(diffacto_out={},
         if not dynamic_fc_threshold :
             table = table[table['pval_adj_pass']][['Protein', 'P(PECA)', 'log2_FC']]
             border_fc = fc_threshold
-            logger.info('Static fold change threshold is applied for {}: {} {}'.format(suf, -1*border_fc, border_fc))
+            logger.info('Static fold change threshold is applied for %s: %s %s', suf, -1*border_fc, border_fc)
             table = table[abs(table['log2_FC']) >= border_fc]
         else:
             t = table[~table['pval_adj_pass']]['log2_FC'].to_numpy()
             t = t[~np.isnan(t)]
-            w = opt_bin(t, logger=logger)
+            w = opt_bin(t)
             bbins = np.arange(min(t), max(t), w)
             H2, b2 = np.histogram(t, bins=bbins)
             m, mi, s = max(H2), b2[np.argmax(H2)], (max(t) - min(t))/6
@@ -208,7 +205,7 @@ def generate_users_output(diffacto_out={},
             shift, sigma = popt[1], abs(popt[2])
             right_fc_threshold = shift + 3*sigma
             left_fc_threshold = shift - 3*sigma
-            logger.info('Dynamic fold change threshold is applied for {}: {} {}'.format(suf, left_fc_threshold, right_fc_threshold, ))
+            logger.info('Dynamic fold change threshold is applied for %s: %s %s', suf, left_fc_threshold, right_fc_threshold)
             table = table[table['pval_adj_pass']][['Protein', 'P(PECA)', 'log2_FC']]
             table = table.query('`log2_FC` >= @right_fc_threshold or `log2_FC` <= @left_fc_threshold')
         comp_df = comp_df.merge(table, how='outer', on='Protein', suffixes = (None, '_'+suf))
@@ -259,7 +256,6 @@ def diffacto_call(diffacto_path='',
                   samples_dict={},
                   write_peptides=False,
                   str_of_other_args='',
-                  logger = logging.getLogger('function')
                   ) :
     # samples_dict = {
     #     's1': ['rep_name1', 'rep_name2', ...]
@@ -316,7 +312,7 @@ def diffacto_call(diffacto_path='',
     logger.debug(final_args)
     process = subprocess.Popen(final_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     with process.stdout:
-        log_subprocess_output(process.stdout, logger=logger)
+        log_subprocess_output(process.stdout)
     exitscore = process.wait()
     logger.debug(exitscore)
 
@@ -338,7 +334,6 @@ def mix_intensity(input_dict,
                   out_dir=None,
                   default_order=None,
                   to_diffacto=None,
-                  logger = logging.getLogger('function')
                   ) :
     # input_dict =   {'suf1' : path_to_diffacto_peptide_file
     #                 ...
@@ -511,7 +506,6 @@ def charge_states_intensity_processing(path,
                                        allowed_pept_modif=True,
                                        allowed_prots=None, # set()
                                        out_path=None,
-                                       logger = logging.getLogger('function')
                                       ) :
     psm_df = pd.read_table(path, sep='\t')
 
@@ -534,7 +528,7 @@ def charge_states_intensity_processing(path,
     else :
         psm_df['protein'] = psm_df['protein'].apply(lambda z: ';'.join([u for u in ast.literal_eval(z)]))
         psm_df = psm_df[psm_df['protein'].apply(lambda z: z != '')]
-    
+
     if 'compensation_voltage' in cols :
         unique_comb_cols = ['peptide', 'assumed_charge', 'compensation_voltage']
     else :
@@ -577,7 +571,7 @@ def charge_states_intensity_processing(path,
     return psm_df
 
 
-def read_PSMs(infile_path, usecols=None, modified_seq=0, logger=logging.getLogger('function')) :
+def read_PSMs(infile_path, usecols=None, modified_seq=0) :
     if infile_path.endswith('.tsv') :
         df1 = pd.read_csv(infile_path, sep = '\t', usecols=usecols)
     elif infile_path.lower().endswith('.pep.xml') or infile_path.lower().endswith('.pepxml') :
@@ -695,7 +689,7 @@ def jac_noisydoublegaus(x0, a_1, x0_1, sigma_1, a_2, x0_2, sigma_2, b) :
     return jac
 
 
-def opt_bin(ar, border=16, logger = logging.getLogger('function')) :
+def opt_bin(ar, border=16) :
     num_bins = 4
     bwidth = (max(ar) - min(ar))/num_bins
     bbins = np.arange(min(ar), max(ar), bwidth)
@@ -725,7 +719,7 @@ def opt_bin(ar, border=16, logger = logging.getLogger('function')) :
             num_bins -= 1
         else :
             num_bins = round(num_bins/1.1, 0)
-        
+
         bwidth = (max(ar) - min(ar))/num_bins
         bbins = np.arange(min(ar), max(ar), bwidth)
         H1, b1 = np.histogram(ar, bins=bbins)
@@ -748,9 +742,9 @@ def opt_bin(ar, border=16, logger = logging.getLogger('function')) :
     return bwidth
 
 
-def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = logging.getLogger('function'), flag=False, doublegaus=False) :
+def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, flag=False, doublegaus=False) :
 
-    bwidth = opt_bin(true_md, logger=logger)
+    bwidth = opt_bin(true_md)
     bbins = np.arange(mass_left, mass_right, bwidth)
     H1, b1 = np.histogram(true_md, bins=bbins)
     noise_fraction = max(np.median(H1) * len(H1) / H1.sum(), 0.01)
@@ -770,13 +764,13 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = l
     for el in true_md :
         if el >= b1[i]-bwidth*(i-j) and el <= b1[i]+bwidth*(k-i) :
             t.append(el)
-    logger.debug('Values after noise filtering {} / {}'.format( len(t), len(true_md)))
-    bwidth = opt_bin(t, border=min(8,8*0.5/noise_fraction), logger=logger)
+    logger.debug('Values after noise filtering %d / %d', len(t), len(true_md))
+    bwidth = opt_bin(t, border=min(8,8*0.5/noise_fraction))
     bbins = np.arange(min(t), max(t) , bwidth)
     H2, b2 = np.histogram(t, bins=bbins)
     if flag :
-        logger.debug('t : {},\nH2 : {},\nb2 : {}'.format(t, H2, b2))
-    
+        logger.debug('t : %s; H2 : %s, b2 : %s', t, H2, b2)
+
     noise = np.median(H2)
     peaks, prop = find_peaks(H2, height=noise)
     try :
@@ -795,11 +789,11 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = l
             maxfev = min(100*len(b2), 10000)
             max_sigma = (np.max(t)-np.min(t))/3
             bounds = [[0, np.min(t), 0, 0, np.min(t), 0, 0], [np.inf, np.max(t), max_sigma, np.inf, np.max(t), max_sigma, np.inf]]
-            popt, pcov = curve_fit(noisydoublegaus, b2[1:], H2, p0=p0, 
-                                   bounds=bounds, 
-                                   jac=jac_noisydoublegaus, 
-                                   maxfev=maxfev, 
-                                   full_output=False, 
+            popt, pcov = curve_fit(noisydoublegaus, b2[1:], H2, p0=p0,
+                                   bounds=bounds,
+                                   jac=jac_noisydoublegaus,
+                                   maxfev=maxfev,
+                                   full_output=False,
                                    loss='linear')
             logger.debug(popt)
             peak_1, peak_2 = popt[:3], popt[3:6]
@@ -817,15 +811,15 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = l
             max_sigma = (np.max(t)-np.min(t))/3
             maxfev = min(100*len(b2), 10000)
             bounds = [[0, np.min(t), 0, 0], [np.inf, np.max(t), max_sigma, np.inf]]
-            popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=p0, 
-                                   bounds=bounds, 
-                                   jac=jac_noisygaus, 
-                                   maxfev=maxfev, 
-                                   full_output=False, 
+            popt, pcov = curve_fit(noisygaus, b2[1:], H2, p0=p0,
+                                   bounds=bounds,
+                                   jac=jac_noisygaus,
+                                   maxfev=maxfev,
+                                   full_output=False,
                                    loss='linear')
             mass_shift, mass_sigma = popt[1], abs(popt[2])
-    except RunTimeError :
-        logger.debug('WARNING! RunTimeError in curve_fit')
+    except RuntimeError :
+        logger.debug('WARNING! RuntimeError in curve_fit')
         logger.debug('H2 : ' + H2)
         logger.debug('b2 : ' + b2)
 
@@ -840,7 +834,7 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, logger = l
     return mass_shift, mass_sigma, pcov[0][0]
 
 
-def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mean_mz=0, mass_accuracy_ppm=10, mean_im = 0, sigma_im = False, isotopes_array=[0, ], logger = logging.getLogger('function')):
+def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mean_mz=0, mass_accuracy_ppm=10, mean_im = 0, sigma_im = False, isotopes_array=[0, ]):
 
     # df_features = df_features[['mz', 'charge', 'rtStart', 'rtEnd', 'id', 'intensityApex'б]]
     # print(mean1, sigma1, mean2, sigma2, mean_mz, mass_accuracy_ppm, mean_im, sigma_im , isotopes_array)
@@ -950,7 +944,7 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
                                          'i':i,
                                          'rt1':rt_diff1,
                                          'rt2':rt_diff2,
-                                         'psm_rt_exp':psm_rt, 
+                                         'psm_rt_exp':psm_rt,
                                          'intensity':intensity}
                             if check_im:
                                 im_ms1 = im_array_ms1[idx_current_ime]
@@ -966,34 +960,33 @@ def total(df_features, psms, mean1=0, sigma1=False, mean2 = 0, sigma2=False, mea
     return results
 
 
-def found_mean_sigma(df_features, 
-                     psms, 
-                     parameters, 
-                     sort ='mz_diff_ppm', 
-                     mean1=0, 
-                     sigma1=False, 
-                     mean2=0, 
-                     sigma2=False, 
-                     mean_mz = 0, 
-                     sigma_mz = False, 
+def found_mean_sigma(df_features,
+                     psms,
+                     parameters,
+                     sort ='mz_diff_ppm',
+                     mean1=0,
+                     sigma1=False,
+                     mean2=0,
+                     sigma2=False,
+                     mean_mz = 0,
+                     sigma_mz = False,
                      mbr_flag = False,
-                     logger = logging.getLogger('function')
                     ):
 # sort ='mz_diff_ppm'
-    
+
     check_gauss = False
     rtStart_array_ms1 = df_features['rtStart'].values
     rtEnd_array_ms1 = df_features['rtEnd'].values
 
     if parameters == 'rt1' or parameters == 'rt2':
-        results_psms = total(df_features = df_features,psms = psms,mass_accuracy_ppm = 100, logger=logger)
+        results_psms = total(df_features = df_features,psms = psms,mass_accuracy_ppm = 100)
 
     if parameters == 'mz_diff_ppm' :
         check_gauss = True
-        results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2,mass_accuracy_ppm = 100, logger=logger)
+        results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2,mass_accuracy_ppm = 100)
 
     if parameters == 'im_diff':
-        results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, logger=logger)
+        results_psms = total(df_features =df_features,psms =psms,mean1 = mean1,sigma1 = sigma1, mean2 = mean2,sigma2 = sigma2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz)
 
         if 'im' in df_features.columns:
             im_array_ms1 = df_features['im'].values
@@ -1003,7 +996,7 @@ def found_mean_sigma(df_features,
                 return 0,0
         else:
             return 0,0
-        
+
     # разбить psms на бины по 'RT exp', сохранить их границы
     # для каждого бина по 'RT exp' в results_psms посчитать медианное значение rt1, вычесть его из всех значений rt1 в бине
     if mbr_flag :
@@ -1017,16 +1010,16 @@ def found_mean_sigma(df_features,
                     i -= 1
                 el['bin'] = i
             calc_medians_rt_list[i].append(sorted(v, key=lambda x: abs(x[sort]))[0]['rt1'])
-        
+
         median_rt1 = {}
         for i in range(numbins) :
             median_rt1[i] = np.median(calc_medians_rt_list[i])
         calc_medians_rt_list = 0
-        
+
         for k, v in results_psms.items() :
             for el in v :
                 el['rt1'] = el['rt1'] - median_rt1[el['bin']]
-    
+
     ar = []
     for value in results_psms.values():
         if sort == 'intensity':
@@ -1037,8 +1030,8 @@ def found_mean_sigma(df_features,
         else:
             ar.append(sorted(value, key=lambda x: abs(x[sort]))[0][parameters])
 
-    mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss, logger=logger)
-    
+    mean, sigma,_ = calibrate_mass(min(ar),max(ar),ar, check_gauss)
+
     if mbr_flag :
         return mean, sigma, RT_exp_bins_left_borders, median_rt1, numbins
     else :
@@ -1046,20 +1039,19 @@ def found_mean_sigma(df_features,
 
 
 def optimized_search_with_isotope_error_(df_features,
-                                         psms, 
-                                         mean_rt1=False, 
-                                         sigma_rt1=False, 
-                                         mean_rt2=False, 
-                                         sigma_rt2=False, 
-                                         mean_mz = False, 
-                                         sigma_mz = False, 
-                                         mean_im = False, 
-                                         sigma_im = False, 
-                                         isotopes_array=[0,1,-1,2,-2], 
+                                         psms,
+                                         mean_rt1=False,
+                                         sigma_rt1=False,
+                                         mean_rt2=False,
+                                         sigma_rt2=False,
+                                         mean_mz = False,
+                                         sigma_mz = False,
+                                         mean_im = False,
+                                         sigma_im = False,
+                                         isotopes_array=[0,1,-1,2,-2],
                                          mbr_flag = False,
-                                         logger = logging.getLogger('function')
                                         ):
-    
+
 
     idx = {}
     for j, i in enumerate(isotopes_array):
@@ -1075,11 +1067,11 @@ def optimized_search_with_isotope_error_(df_features,
             logger.debug('rt1')
             try :
                 if mbr_flag :
-                    mean_rt1, sigma_rt1, RT_exp_bins_left_borders, median_rt1, numbins = found_mean_sigma(df_features,psms, 'rt1', mbr_flag=mbr_flag, logger=logger)
+                    mean_rt1, sigma_rt1, RT_exp_bins_left_borders, median_rt1, numbins = found_mean_sigma(df_features,psms, 'rt1', mbr_flag=mbr_flag)
                     psms['bin'] = pd.qcut(psms['RT exp'], numbins, labels=np.arange(numbins) )
                     psms['RT exp'] = psms[['RT exp', 'bin']].apply(lambda x : x['RT exp'] - median_rt1[x['bin']], axis=1)
                 else :
-                    mean_rt1, sigma_rt1 = found_mean_sigma(df_features,psms, 'rt1', logger=logger)
+                    mean_rt1, sigma_rt1 = found_mean_sigma(df_features,psms, 'rt1')
             except RuntimeError :
                 logger.warning('rt1: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev.')
                 mean_rt1, sigma_rt1 = 0, max(rtStart_array_ms1)/25
@@ -1087,7 +1079,7 @@ def optimized_search_with_isotope_error_(df_features,
         if mean_rt2 is False and sigma_rt2 is False:
             logger.debug('rt2')
             try :
-                mean_rt2, sigma_rt2 = found_mean_sigma(df_features,psms, 'rt2', logger=logger)
+                mean_rt2, sigma_rt2 = found_mean_sigma(df_features,psms, 'rt2')
             except RuntimeError :
                 logger.warning('rt2: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev.')
                 mean_rt2, sigma_rt2 = 0, max(rtEnd_array_ms1)/25
@@ -1095,7 +1087,7 @@ def optimized_search_with_isotope_error_(df_features,
         if mean_mz is False and sigma_mz is False:
             logger.debug('mz')
             try :
-                mean_mz, sigma_mz = found_mean_sigma(df_features,psms,'mz_diff_ppm', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2, logger=logger)
+                mean_mz, sigma_mz = found_mean_sigma(df_features,psms,'mz_diff_ppm', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2)
             except RuntimeError :
                 logger.warning('mz: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev.')
                 mean_mz, sigma_mz = 0, 100/3
@@ -1103,7 +1095,7 @@ def optimized_search_with_isotope_error_(df_features,
         if mean_im is False and sigma_im is False:
             logger.debug('im')
             try :
-                mean_im, sigma_im = found_mean_sigma(df_features,psms,'im_diff', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2, mean_mz = mean_mz, sigma_mz= sigma_mz, logger=logger)
+                mean_im, sigma_im = found_mean_sigma(df_features,psms,'im_diff', mean1 = mean_rt1, sigma1 = sigma_rt1, mean2 = mean_rt2,sigma2 = sigma_rt2, mean_mz = mean_mz, sigma_mz= sigma_mz)
             except RuntimeError :
                 logger.warning('im: Optimal parameters not found: Number of calls to function in curve_fit has reached maxfev = 1000.')
                 if len(set(im_array_ms1)) != 1:
@@ -1116,7 +1108,7 @@ def optimized_search_with_isotope_error_(df_features,
                     sigma_im = False
 
     else :
-        logger.warning('Too few psms to calculate optimal shift and sigma for optimal search: {}'.format(len(psms)))
+        logger.warning('Too few psms to calculate optimal shift and sigma for optimal search: %d', len(psms))
         rtStart_array_ms1 = df_features['rtStart'].values
         rtEnd_array_ms1 = df_features['rtEnd'].values
         sigma1 = max(rtStart_array_ms1)/25
@@ -1133,18 +1125,18 @@ def optimized_search_with_isotope_error_(df_features,
                     min_im = min(im_array_ms1)
                     mean_im = 0
                     sigma_im = (max_im - min_im)/2
-        logger.debug('Using rough parameters:'.format())
-        logger.debug(' {}: {}\n'.format('rt1_diff', mean1))
-        logger.debug(' {}: {}\n'.format('rt1_sigma', sigma1))
-        logger.debug(' {}: {}\n'.format('rt2_diff', mean1))
-        logger.debug(' {}: {}\n'.format('rt2_sigma', sigma1))
-        logger.debug(' {}: {}\n'.format('mz_diff', mean_mz))
-        logger.debug(' {}: {}\n'.format('mz_sigma', sigma_mz))
-        logger.debug(' {}: {}\n'.format('im_diff', mean_im))
-        logger.debug(' {}: {}\n'.format('im_sigma', sigma_im))
+        logger.debug('Using rough parameters:')
+        logger.debug('rt1_diff: %s', mean1)
+        logger.debug('rt1_sigma: %s', sigma1)
+        logger.debug('rt2_diff: %s', mean1)
+        logger.debug('rt2_sigma: %s', sigma1)
+        logger.debug('mz_diff: %s', mean_mz)
+        logger.debug('mz_sigma: %s', sigma_mz)
+        logger.debug('im_diff: %s', mean_im)
+        logger.debug('im_sigma: %s', sigma_im)
 
 
-    results_isotope = total(df_features = df_features,psms =psms,mean1 = mean_rt1, sigma1 = sigma_rt1,mean2 = mean_rt2, sigma2 = sigma_rt2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, mean_im = mean_im, sigma_im = sigma_im, isotopes_array=isotopes_array, logger=logger)
+    results_isotope = total(df_features = df_features,psms =psms,mean1 = mean_rt1, sigma1 = sigma_rt1,mean2 = mean_rt2, sigma2 = sigma_rt2, mean_mz = mean_mz, mass_accuracy_ppm = 3*sigma_mz, mean_im = mean_im, sigma_im = sigma_im, isotopes_array=isotopes_array)
 
     results_isotope_end = []
     cnt = Counter([z[0]['i'] for z in results_isotope.values()])
@@ -1174,7 +1166,7 @@ def optimized_search_with_isotope_error_(df_features,
 
 ## match between run
 
-def mbr(feat,II,PSMs_full_paths, PSM_path, logger=logging.getLogger('function')):
+def mbr(feat,II,PSMs_full_paths, PSM_path):
     II = II.sort_values(by = 'feature_intensityApex', ascending = False)
     II['pep_charge'] = II['peptide'] + II['assumed_charge'].map(str)
     II = II.drop_duplicates(subset = 'pep_charge')
@@ -1184,14 +1176,14 @@ def mbr(feat,II,PSMs_full_paths, PSM_path, logger=logging.getLogger('function'))
     found_set = set(match_between_runs_copy01['pep_charge'])
     for j in PSMs_full_paths:
         if PSM_path != j:
-            logger.debug('Matching PSMs from {}'.format(j))
+            logger.debug('Matching PSMs from %s', j)
             psm_j_fdr = read_PSMs(j)
             ll = len(psm_j_fdr)
             psm_j_fdr['pep_charge'] = psm_j_fdr['peptide'] + psm_j_fdr['assumed_charge'].map(str)
             if len(psm_j_fdr) > 3000 :
                 psm_j_fdr = psm_j_fdr[psm_j_fdr['pep_charge'].apply(lambda x: x not in found_set)]
-            logger.debug('Real PSMs count in the input to matching {} / {}'.format(len(psm_j_fdr), ll))
-            III = optimized_search_with_isotope_error_(feat, psm_j_fdr, isotopes_array=[0,1,-1,2,-2], mbr_flag=True, logger=logger)[0]
+            logger.debug('Real PSMs count in the input to matching %d / %d', len(psm_j_fdr), ll)
+            III = optimized_search_with_isotope_error_(feat, psm_j_fdr, isotopes_array=[0,1,-1,2,-2], mbr_flag=True)[0]
             if len(psm_j_fdr) <= 3000 :
                 III = III[III['pep_charge'].apply(lambda x: x not in found_set)]
             III = III.sort_values(by = 'feature_intensityApex', ascending = False)
@@ -1200,6 +1192,6 @@ def mbr(feat,II,PSMs_full_paths, PSM_path, logger=logging.getLogger('function'))
     return II
 
 
-def log_subprocess_output(pipe, logger = logging.getLogger('function') ):
+def log_subprocess_output(pipe):
     for line in iter(pipe.readline, b''): # b'\n'-separated lines
-        logger.info('From subprocess: %r', line)
+        logger.info('From subprocess: %s', line.decode(sys.stdout.encoding).rstrip('\n'))

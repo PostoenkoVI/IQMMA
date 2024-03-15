@@ -19,25 +19,25 @@ class EmptyFileError(ValueError):
 logger = logging.getLogger(__name__)
 
 
-def process_files(args, logger=logging.getLogger('function')):
+def process_files(args):
 
     if args['threads'] :
         if args['bio2'] :
             if not 'nprocs' in args['bio2_args'] :
                 args['bio2_args'] = args['bio2_args'].strip('"'"'") + ' -nprocs ' + str(args['threads'])
-                logger.debug('-bio2_args extended with -nprocs {}'.format(args['threads']))
+                logger.debug('-bio2_args extended with -nprocs %s', args['threads'])
             else :
-                logger.debug('-bio2_args already contains -nprocs option, iqmma -threads {} is ignored'.format(args['threads']))
+                logger.debug('-bio2_args already contains -nprocs option, iqmma -threads %s is ignored', args['threads'])
         if args['openMS'] :
             if not 'threads' in args['openms_args'] :
                 args['openms_args'] = args['openms_args'].strip('"'"'") + ' -threads ' + str(args['threads'])
-                logger.debug('-openms_args extended with -threads {}'.format(args['threads']))
+                logger.debug('-openms_args extended with -threads %s', args['threads'])
             else :
-                logger.debug('-openms_args already contains -threads option, iqmma -threads {} is ignored'.format(args['threads']))
+                logger.debug('-openms_args already contains -threads option, iqmma -threads %s is ignored', args['threads'])
     logger.debug(args)
 
     if not args['s1'] :
-        logger.critical('At least one file in the argument is needed: -s1 {}'.format(args['s1']))
+        logger.critical('At least one file in the argument is needed: -s1 %s', args['s1'])
         raise ValueError('At least one file in the argument is needed: -s1 {}'.format(args['s1']))
 
     mode = None
@@ -57,7 +57,7 @@ def process_files(args, logger=logging.getLogger('function')):
             elif type(args[sample_num]) is list :
                 args[sample_num] = [os.path.abspath(os.path.normpath(x)) for x in args[sample_num]]
             else :
-                logger.critical('invalid {} input'.format(sample_num))
+                logger.critical('invalid %s input', sample_num)
                 return -1
 
 #    print(args['s1'].split())
@@ -67,7 +67,7 @@ def process_files(args, logger=logging.getLogger('function')):
             logger.critical('Path to diffacto executable file is required')
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), args['dif'])
         elif not os.path.exists(os.path.normpath(args['dif'])) :
-            logger.critical('Path to diffacto executable file does not exist: {}'.format(os.path.normpath(args['dif'])))
+            logger.critical('Path to diffacto executable file does not exist: %s', os.path.normpath(args['dif']))
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), args['dif'])
         else :
             args['dif'] = os.path.abspath(os.path.normpath(args['dif']))
@@ -121,9 +121,9 @@ def process_files(args, logger=logging.getLogger('function')):
     if args['psm_folder'] :
         dir_name = os.path.abspath(os.path.normpath(args['psm_folder']))
         if os.path.exists(dir_name) :
-            logger.info('Searching *{} files in {}'.format( PSMs_suf, dir_name))
+            logger.info('Searching *%s files in %s', PSMs_suf, dir_name)
     else :
-        logger.warning('Searching *{} files in the same directory as .mzML'.format(PSMs_suf))
+        logger.warning('Searching *%s files in the same directory as .mzML', PSMs_suf)
         dir_name = os.path.dirname(mzML_paths[0])
     for sample_num in sample_nums :
         PSMs_full_dict[sample_num] = {}
@@ -144,7 +144,7 @@ def process_files(args, logger=logging.getLogger('function')):
         args['outdir'] = os.path.dirname(mzML_paths[0])
     else :
         args['outdir'] = os.path.abspath(os.path.normpath(args['outdir']))
-        logger.info('Results are stored at {}'.format(args['outdir']))
+        logger.info('Results are stored at %s', args['outdir'])
 
     mzML_dict = {}
     for sample, mzML in zip(samples, mzML_paths) :
@@ -153,20 +153,20 @@ def process_files(args, logger=logging.getLogger('function')):
     if mode != 'feature matching' :
         if args['allowed_pepts'] :
             if os.path.exists(os.path.normpath(args['allowed_pepts'])) :
-                logger.info('Peptides from file {} are allowed for quantitative analysis'.format(os.path.normpath(args['allowed_pepts'])))
+                logger.info('Peptides from file %s are allowed for quantitative analysis', os.path.normpath(args['allowed_pepts']))
                 peptides_path = os.path.normpath(args['allowed_pepts'])
             else :
-                logger.warning('Path to peptides files folder does not exist: {}'.format(os.path.normpath(args['allowed_pepts'])))
+                logger.warning('Path to peptides files folder does not exist: %s', os.path.normpath(args['allowed_pepts']))
                 peptides_path = ''
         else :
             peptides_path = ''
 
         if args['allowed_prots'] :
             if os.path.exists(os.path.normpath(args['allowed_prots'])) :
-                logger.info('Proteins from file {} are allowed for quantitative analysis'.format(os.path.normpath(args['allowed_prots'])))
+                logger.info('Proteins from file %s are allowed for quantitative analysis', os.path.normpath(args['allowed_prots']))
                 proteins_path = os.path.normpath(args['allowed_prots'])
             else :
-                logger.warning('path to proteins files folder does not exist: {}'.format(os.path.normpath(args['allowed_prots'])))
+                logger.warning('path to proteins files folder does not exist: %s', os.path.normpath(args['allowed_prots']))
                 proteins_path = ''
         else :
             proteins_path = ''
@@ -242,13 +242,13 @@ def process_files(args, logger=logging.getLogger('function')):
             for path, sample in zip(mzML_paths, samples) :
                 outName = sample + '_features_' + 'dino' + '.tsv'
                 if args['overwrite_features'] == 1 or not os.path.exists(os.path.join(feature_path, outName)) :
-                    logger.info('\n' + 'Writing features' + ' dino ' + sample + '\n')
-                    exitscore = call_Dinosaur(args['dino'], path, feature_path, outName, args['dino_args'], logger=logger)
+                    logger.info('Writing features' + ' dino ' + sample)
+                    exitscore = call_Dinosaur(args['dino'], path, feature_path, outName, args['dino_args'])
                     logger.debug(exitscore)
                 else :
-                    logger.info('\n' + 'Not overwriting features ' + ' dino ' + sample + '\n')
+                    logger.info('Not overwriting features ' + ' dino ' + sample)
         else :
-            logger.critical('Skipping Dinosaur. Path to Dinosaur does not exists: {}'.format(args['dino']))
+            logger.error('Skipping Dinosaur. Path to Dinosaur does not exists: %s', args['dino'])
 
 ### Biosaur2
 
@@ -261,13 +261,13 @@ def process_files(args, logger=logging.getLogger('function')):
             for path, sample in zip(mzML_paths, samples) :
                 outPath = os.path.join(feature_path, sample + '_features_bio2.tsv')
                 if args['overwrite_features'] == 1 or not os.path.exists(outPath) :
-                    logger.info('\n' + 'Writing features ' + ' bio2 ' + sample + '\n')
-                    exitscore = call_Biosaur2(args['bio2'], path, outPath, args['bio2_args'], logger=logger)
+                    logger.info('Writing features ' + ' bio2 ' + sample)
+                    exitscore = call_Biosaur2(args['bio2'], path, outPath, args['bio2_args'])
                     logger.debug(exitscore)
                 else :
-                    logger.info('\n' + 'Not overwriting features ' + ' bio2 ' + sample + '\n')
+                    logger.info('Not overwriting features ' + ' bio2 ' + sample)
         else :
-            logger.critical('Skipping Biosaur2. Path to Biosaur2 does not exists: {}'.format(args['bio2']))
+            logger.error('Skipping Biosaur2. Path to Biosaur2 does not exists: %s', args['bio2'])
 
 ### OpenMS
 
@@ -284,11 +284,11 @@ def process_files(args, logger=logging.getLogger('function')):
                 o = os.path.join(feature_path, sample + '_features_' + 'openMS.tsv')
                 out_path = os.path.join(out_path_dir, sample + '.featureXML')
                 if args['overwrite_features'] == 1 or (not os.path.exists(out_path) and not os.path.exists(o)) :
-                    logger.info('\n' + 'Writing .featureXML ' + ' openMS ' + sample + '\n')
-                    exitscore = call_OpenMS(args['openMS'], path, out_path, args['openms_args'], logger=logger)
+                    logger.info('Writing .featureXML ' + ' openMS ' + sample)
+                    exitscore = call_OpenMS(args['openMS'], path, out_path, args['openms_args'])
                     logger.debug(exitscore)
                 else :
-                    logger.info('\n' + 'Not ovetwriting .featureXML ' + ' openMS ' + sample + '\n')
+                    logger.info('Not ovetwriting .featureXML ' + ' openMS ' + sample)
 
             for path, sample in zip(mzML_paths, samples) :
                 out_path = os.path.join(out_path_dir, sample + '.featureXML')
@@ -310,9 +310,9 @@ def process_files(args, logger=logging.getLogger('function')):
                     b = pd.DataFrame(features_list, columns = ['id', 'mz', 'charge', 'rtStart', 'rtEnd', 'intensityApex'])
                     b.to_csv(o, sep='\t', encoding='utf-8')
                 else :
-                    logger.info('Not overwriting features ' + ' openMS ' + sample + '\n')
+                    logger.info('Not overwriting features ' + ' openMS ' + sample)
         else :
-            logger.critical('Skipping OpenMS. Path to OpenMSFeatureFinderCentroided does not exists: {}'.format(args['openMS']))
+            logger.error('Skipping OpenMS. Path to OpenMSFeatureFinderCentroided does not exists: %s', args['openMS'])
 
 
 ### Сопоставление
@@ -322,28 +322,28 @@ def process_files(args, logger=logging.getLogger('function')):
             matching_path = os.path.abspath(os.path.normpath(args['matching_folder']))
         else :
             matching_path = os.path.abspath(os.path.normpath(args['matching_folder']))
-            logger.warning('Path to matching folder does not exists, creating it: {}'.format(matching_path))
+            logger.warning('Path to matching folder does not exists, creating it: %s', matching_path)
     else :
         matching_path = os.path.join(out_directory, 'feats_matched')
-        logger.warning('Path to matching folder does not exists, using default one: {}'.format(matching_path))
+        logger.warning('Path to matching folder does not exists, using default one: %s', matching_path)
     os.makedirs(matching_path, exist_ok=True)
 
     logger.info('Start matching features')
     for PSM_path, sample in zip(PSMs_full_paths, samples) :
-        PSM = read_PSMs(PSM_path, modified_seq=args['modified_seq'], logger=logger)
+        PSM = read_PSMs(PSM_path, modified_seq=args['modified_seq'])
         logger.info('sample %s', sample)
         for suf in suffixes :
             if args['overwrite_matching'] == 1 or not os.path.exists(os.path.join(matching_path, sample + '_' + suf + '.tsv')) :
                 feats = pd.read_csv( os.path.join(feature_path, sample + '_features_' + suf + '.tsv'), sep = '\t')
                 feats = feats.sort_values(by='mz')
 
-                logger.info(suf + ' features ' + sample + '\n' + 'START')
-                temp_df = optimized_search_with_isotope_error_(feats, PSM, isotopes_array=args['isotopes'], logger=logger)[0]
-                # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2], logger=logger)[0]
+                logger.info(suf + ' features ' + sample + 'START')
+                temp_df = optimized_search_with_isotope_error_(feats, PSM, isotopes_array=args['isotopes'])[0]
+                # temp_df = optimized_search_with_isotope_error_(feats, PSM, mean_rt1=0,sigma_rt1=1e-6,mean_rt2=0,sigma_rt2=1e-6,mean_mz = False,sigma_mz = False,mean_im = False,sigma_im = False, isotopes_array=[0,1,-1,2,-2])[0]
 
                 if args['mbr']:
-                    logger.info('Start match-between-runs for features {} {}'.format(sample, suf))
-                    temp_df = mbr(feats, temp_df, PSMs_full_paths, PSM_path, logger=logger)
+                    logger.info('Start match-between-runs for features %s %s', sample, suf)
+                    temp_df = mbr(feats, temp_df, PSMs_full_paths, PSM_path)
 
                 median = temp_df['feature_intensityApex'].median()
                 temp_df['med_norm_feature_intensityApex'] = temp_df['feature_intensityApex']/median
@@ -382,7 +382,7 @@ def process_files(args, logger=logging.getLogger('function')):
             if os.path.exists(os.path.normpath(args['diffacto_folder'])) :
                 diffacto_folder = os.path.abspath(os.path.normpath(args['diffacto_folder']))
             else :
-                logger.warning('Path to diffacto results does not exists, using default one: {}'.format( os.path.join(out_directory, 'diffacto')))
+                logger.warning('Path to diffacto results does not exists, using default one: %s',  os.path.join(out_directory, 'diffacto'))
         else :
             diffacto_folder = os.path.join(out_directory, 'diffacto')
         os.makedirs(diffacto_folder, exist_ok=True)
@@ -407,7 +407,7 @@ def process_files(args, logger=logging.getLogger('function')):
 
         allowed_peptides = set()
         if paths['peptides'] :
-            logger.info('Allowed peptides for quantitation from file: {}'.format(paths['peptides'][key]))
+            logger.info('Allowed peptides for quantitation from file: %s', paths['peptides'][key])
             df0 = pd.read_table(paths['peptides'], usecols=['peptide'])
             allowed_peptides.update(df0['peptide'])
             allowed_pept_modif = False
@@ -416,10 +416,10 @@ def process_files(args, logger=logging.getLogger('function')):
             q_counter = 0
             temp_s = set()
             for psm_path in PSMs_full_paths :
-                logger.debug('Reading PSM file {}'.format(psm_path))
-                t = read_PSMs(psm_path, modified_seq=args['modified_seq'], logger=logger)
+                logger.debug('Reading PSM file %s', psm_path)
+                t = read_PSMs(psm_path, modified_seq=args['modified_seq'])
                 if 'q' in list(t.columns) :
-                    logger.info('Using q-value < 0.01 filtering on input peptides for file: {}'.format(psm_path))
+                    logger.info('Using q-value < 0.01 filtering on input peptides for file: %s', psm_path)
                     temp_s.update(t[(t['q'] < 0.01) & (t['protein'].str.find(args['decoy_prefix']) < 0)]['peptide'])
                     q_counter += 1
                 else :
@@ -455,7 +455,6 @@ def process_files(args, logger=logging.getLogger('function')):
                                                                         allowed_pept_modif=allowed_pept_modif,
                                                                         allowed_prots=allowed_prots, # set()
                                                                         out_path=out_path,
-                                                                        logger=logger
                 )
                 logger.debug('Done %s', sample)
 
@@ -472,7 +471,6 @@ def process_files(args, logger=logging.getLogger('function')):
                                           samples_dict = samples_dict,
                                           write_peptides=True,
                                           str_of_other_args = args['diffacto_args'],
-                                          logger=logger
                                          )
             logger.info('Done Diffacto run with %s', suf)
             psms_dict = False
@@ -496,11 +494,10 @@ def process_files(args, logger=logging.getLogger('function')):
             fc_threshold = args['fc_threshold'],
             dynamic_fc_threshold = args['dynamic_fc_threshold'],
             save = save,
-            logger=logger
         )
 
         if sum(list(num_changed_prots.values())) == 0 :
-            logging.warning('No differentially expressed proteins detected in separate diffacto runs')
+            logger.warning('No differentially expressed proteins detected in separate diffacto runs')
 
         if args['choice'] == 0 :
             default_order = sorted(suffixes, key= lambda x: num_changed_prots[x], reverse=True)
@@ -523,10 +520,9 @@ def process_files(args, logger=logging.getLogger('function')):
                               out_dir= charge_faims_intensity_path,
                               default_order= default_order,
                               to_diffacto= to_diffacto,
-                              logger=logger
                               )
 
-            logger.info('Mixing intensities DONE with exitscore {}'.format(a))
+            logger.info('Mixing intensities DONE with exitscore %s', a)
 
             paths['DiffPept'][suf] = to_diffacto
             paths['DiffSampl'][suf] = os.path.join(diffacto_folder, args['outsampl'].replace('.txt', '_' + suf + '.txt'))
@@ -541,9 +537,8 @@ def process_files(args, logger=logging.getLogger('function')):
                                       psm_dfs_dict = {},
                                       samples_dict = samples_dict,
                                       str_of_other_args = args['diffacto_args'],
-                                      logger=logger
                                      )
-            logger.info('Done Diffacto run with {} with exitscore {}'.format(suf, exitscore))
+            logger.info('Done Diffacto run with %s with exitscore %s', suf, exitscore)
 
             save = True
             if args['venn'] != 1 :
@@ -560,10 +555,9 @@ def process_files(args, logger=logging.getLogger('function')):
                 fc_threshold = args['fc_threshold'],
                 dynamic_fc_threshold = args['dynamic_fc_threshold'],
                 save = save,
-                logger=logger
             )
             logger.info('Numbers of differentially expressed proteins:')
             for suf in suffixes+['mixed'] :
-                logger.info('{}: {}'.format(suf, num_changed_prots[suf]))
+                logger.info('%s: %s', suf, num_changed_prots[suf])
 
             logger.info('IQMMA finished')
