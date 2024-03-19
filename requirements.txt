@@ -6,4 +6,4 @@ pandas
 venn
 lxml
 biosaur2
-diffacto @ git+https://github.com/levitsky/diffacto.git@fix/dtype
+diffacto
