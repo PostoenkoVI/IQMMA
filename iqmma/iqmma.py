@@ -379,10 +379,9 @@ def process_files(args):
     if mode == 'diffacto' :
         logger.info('Going for quantitative analysis with diffacto')
         if args['diffacto_folder'] :
-            if os.path.exists(os.path.normpath(args['diffacto_folder'])) :
-                diffacto_folder = os.path.abspath(os.path.normpath(args['diffacto_folder']))
-            else :
-                logger.warning('Path to diffacto results does not exists, using default one: %s',  os.path.join(out_directory, 'diffacto'))
+            diffacto_folder = os.path.abspath(os.path.normpath(args['diffacto_folder']))
+            if not os.path.exists(diffacto_folder):
+                logger.warning('Path to diffacto results does not exist, creating: %s', diffacto_folder)
         else :
             diffacto_folder = os.path.join(out_directory, 'diffacto')
         os.makedirs(diffacto_folder, exist_ok=True)
