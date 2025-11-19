@@ -55,17 +55,17 @@ def run():
     parser.add_argument('-psm_format', nargs='?', help='format or suffix to search PSMs files (may be PSMs_full.tsv or identipy.pep.xml for example)', type=str, default='PSMs_full.tsv', const='PSMs_full.tsv')
     parser.add_argument('-allowed_pepts', nargs='?', help='path to file with sequences of peptides (with "peptide" header) to use in quantitation', type=str, default='', const='')
     parser.add_argument('-allowed_prots', nargs='?', help='path to file with names of proteins (according fasta, with "dbname" header) to use in quantitation', type=str, default='', const='')
-
+ 
     parser.add_argument('-dino', nargs='?', help='path to Dinosaur', type=str, default='', const='')
 #    parser.add_argument('-bio', nargs='?', help='path to Biosaur', type=str, default='', const='')
     parser.add_argument('-bio2', nargs='?', help='path to Biosaur2', type=str, default='', const='')
     parser.add_argument('-openMS', nargs='?', help='path to OpenMS FeatureFinderCentroided', type=str, default='', const='')
-
+ 
     parser.add_argument('-outdir', nargs='?', help='name of directory to store results', type=str, default='', const='')
     parser.add_argument('-feature_folder', nargs='?', help='directory to store features', type=str, default='', const='')
     parser.add_argument('-matching_folder', nargs='?', help='directory to store matched psm-feature pairs', type=str, default='', const='')
     parser.add_argument('-diffacto_folder', nargs='?', help='directory to store diffacto results', type=str, default='', const='')
-
+ 
     parser.add_argument('-overwrite_features', nargs='?', help='whether to overwrite existed features files (flag == 1) or use them (flag == 0)', type=int, default=0, const=0, choices=[0, 1])
     parser.add_argument('-overwrite_matching', nargs='?', help='whether to overwrite existed matched files (flag == 1) or use them (flag == 0)', type=int, default=0, const=0, choices=[0, 1])
     parser.add_argument('-overwrite_first_diffacto', nargs='?', help='whether to overwrite existed diffacto files (flag == 1) or use them (flag == 0)', type=int, default=1, const=1, choices=[0, 1])

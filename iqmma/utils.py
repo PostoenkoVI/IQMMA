@@ -700,18 +700,26 @@ def opt_bin(ar, border=16) :
     bestbins2 = num_bins
     mxp2 = max_percent
     mxp1 = max_percent
+    old_max_percent = max_percent
     i = 0
+    j = 0
     while max_percent > border and i < 10000 :
         num_bins = num_bins*2
-
         bwidth = (max(ar) - min(ar))/num_bins
         bbins = np.arange(min(ar), max(ar), bwidth)
         H1, b1 = np.histogram(ar, bins=bbins)
+        old_max_percent = max_percent
         max_percent = 100*max(H1)/sum(H1)
-        # print(num_bins, max_percent)
+        # print('first_while', num_bins, max_percent)
         if max_percent <= border :
             bestbins1 = num_bins
             mxp1 = max_percent
+        if old_max_percent == max_percent :
+            j += 1
+        if j == 7 :
+            # print('Unable to reach border bin width')
+            logger.debug('Unable to reach border bin width')
+            break
         i += 1
     i = 0
     while max_percent < border and i < 10000 :
@@ -724,7 +732,7 @@ def opt_bin(ar, border=16) :
         bbins = np.arange(min(ar), max(ar), bwidth)
         H1, b1 = np.histogram(ar, bins=bbins)
         max_percent = 100*max(H1)/sum(H1)
-        # print(num_bins, max_percent)
+        print('second_while', num_bins, max_percent)
         if max_percent < border :
             bestbins2 = num_bins
             mxp2 = max_percent
@@ -737,12 +745,12 @@ def opt_bin(ar, border=16) :
     bbins = np.arange(min(ar), max(ar), bwidth)
     H1, b1 = np.histogram(ar, bins=bbins)
     max_percent = 100*max(H1)/sum(H1)
-    logger.debug('final num_bins: ' + str(int(num_bins)) + '\t' + 'final max percent per bin: ' + str(round(max_percent, 2)) + '%')
+    # logger.debug('final num_bins: ' + str(int(num_bins)) + '\t' + 'final max percent per bin: ' + str(round(max_percent, 2)) + '%')
 
     return bwidth
 
 
-def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, flag=False, doublegaus=False) :
+def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, flag=True, doublegaus=False) :
 
     bwidth = opt_bin(true_md)
     bbins = np.arange(mass_left, mass_right, bwidth)
@@ -765,14 +773,17 @@ def calibrate_mass(mass_left, mass_right, true_md, check_gauss=False, flag=False
         if el >= b1[i]-bwidth*(i-j) and el <= b1[i]+bwidth*(k-i) :
             t.append(el)
     logger.debug('Values after noise filtering %d / %d', len(t), len(true_md))
+    if flag :
+        logger.debug('t : %s; true_md : %s, border : %s', t, true_md, min(8,8*0.5/noise_fraction))
     bwidth = opt_bin(t, border=min(8,8*0.5/noise_fraction))
     bbins = np.arange(min(t), max(t) , bwidth)
     H2, b2 = np.histogram(t, bins=bbins)
-    if flag :
-        logger.debug('t : %s; H2 : %s, b2 : %s', t, H2, b2)
+    # if flag :
+    #     logger.debug('t : %s; H2 : %s, b2 : %s', t, H2, b2)
 
     noise = np.median(H2)
     peaks, prop = find_peaks(H2, height=noise)
+    
     try :
         if len(peaks) >= 2 and doublegaus :
             m_1 = np.max(prop['peak_heights'])
